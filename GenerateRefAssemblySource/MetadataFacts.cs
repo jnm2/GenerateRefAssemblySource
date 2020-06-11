@@ -1,31 +1,19 @@
-﻿using System;
+﻿using Microsoft.CodeAnalysis;
 using System.Collections.Immutable;
-using System.Globalization;
 using System.Linq;
-using System.Reflection;
 
 namespace GenerateRefAssemblySource
 {
     internal static class MetadataFacts
     {
-        public static (string Name, int Arity) ParseTypeName(string metadataName)
+        public static ImmutableArray<INamedTypeSymbol> GetContainingTypes(INamedTypeSymbol type)
         {
-            var backtickIndex = metadataName.IndexOf('`');
-            if (backtickIndex == -1) return (metadataName, 0);
-
-            return (
-                metadataName.Substring(0, backtickIndex),
-                int.Parse(metadataName.AsSpan(backtickIndex + 1), NumberStyles.None, CultureInfo.InvariantCulture));
-        }
-
-        public static ImmutableArray<Type> GetContainingTypes(Type type)
-        {
-            var builder = ImmutableArray.CreateBuilder<Type>();
+            var builder = ImmutableArray.CreateBuilder<INamedTypeSymbol>();
             var current = type;
 
             while (true)
             {
-                current = current.DeclaringType;
+                current = current.ContainingType;
                 if (current is null) break;
                 builder.Add(current);
             }
@@ -34,46 +22,36 @@ namespace GenerateRefAssemblySource
             return builder.ToImmutable();
         }
 
-        public static ImmutableArray<Type> GetNewGenericTypeParameters(Type type)
+        public static bool IsVisibleOutsideAssembly(INamedTypeSymbol type)
         {
-            return type.GetGenericArguments()
-                .Skip(type.DeclaringType?.GetGenericArguments().Length ?? 0)
-                .ToImmutableArray();
-        }
-
-        public static bool IsVisibleOutsideAssembly(Type type)
-        {
-            switch (type.Attributes & TypeAttributes.VisibilityMask)
+            switch (type.DeclaredAccessibility)
             {
-                case TypeAttributes.Public:
-                    return true;
+                case Accessibility.Public:
+                    return type.ContainingType is null || IsVisibleOutsideAssembly(type.ContainingType);
 
-                case TypeAttributes.NestedPublic:
-                    return IsVisibleOutsideAssembly(type.DeclaringType!);
-
-                case TypeAttributes.NestedFamily:
-                case TypeAttributes.NestedFamORAssem:
-                    return IsVisibleOutsideAssembly(type.DeclaringType!) && IsInheritable(type.DeclaringType!);
+                case Accessibility.Protected:
+                case Accessibility.ProtectedOrInternal:
+                    return IsVisibleOutsideAssembly(type.ContainingType!) && IsInheritable(type.ContainingType!);
 
                 default:
                     return false;
             }
         }
 
-        public static bool IsInheritable(Type type)
+        public static bool IsInheritable(INamedTypeSymbol type)
         {
-            return type is { IsValueType: false, IsSealed: false }
-                && type.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                    .Any(IsVisibleToDerivedTypes);
+            return !type.IsSealed && type.GetMembers(WellKnownMemberNames.InstanceConstructorName)
+                .OfType<IMethodSymbol>()
+                .Any(IsVisibleToDerivedTypes);
         }
 
-        public static bool IsVisibleToDerivedTypes(MethodBase method)
+        public static bool IsVisibleToDerivedTypes(IMethodSymbol method)
         {
-            switch (method.Attributes & MethodAttributes.MemberAccessMask)
+            switch (method.DeclaredAccessibility)
             {
-                case MethodAttributes.Public:
-                case MethodAttributes.Family:
-                case MethodAttributes.FamORAssem:
+                case Accessibility.Public:
+                case Accessibility.Protected:
+                case Accessibility.ProtectedOrInternal:
                     return true;
 
                 default:

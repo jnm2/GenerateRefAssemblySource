@@ -1,103 +1,102 @@
-﻿using System;
+﻿using Microsoft.CodeAnalysis;
+using System;
 using System.CodeDom.Compiler;
 
 namespace GenerateRefAssemblySource
 {
     internal readonly struct GenerationContext
     {
-        public GenerationContext(IndentedTextWriter writer, string? currentNamespace = null, Type[]? genericTypeParameters = null, Type[]? genericMethodParameters = null)
+        public GenerationContext(IndentedTextWriter writer, INamespaceSymbol currentNamespace)
         {
             Writer = writer ?? throw new ArgumentNullException(nameof(writer));
             CurrentNamespace = currentNamespace;
-            GenericTypeParameters = genericTypeParameters ?? Type.EmptyTypes;
-            GenericMethodParameters = genericMethodParameters ?? Type.EmptyTypes;
         }
 
         public IndentedTextWriter Writer { get; }
+        public INamespaceSymbol CurrentNamespace { get; }
 
-        public string? CurrentNamespace { get; }
-
-        public Type[] GenericTypeParameters { get; }
-
-        public Type[] GenericMethodParameters { get; }
-
-        public GenerationContext WithCurrentNamespace(string? currentNamespace)
+        public void WriteTypeReference(ITypeSymbol type)
         {
-            return new GenerationContext(Writer, currentNamespace, GenericTypeParameters, GenericMethodParameters);
-        }
-
-        public GenerationContext WithGenericTypeParameters(Type[] genericTypeParameters)
-        {
-            return new GenerationContext(Writer, CurrentNamespace, genericTypeParameters, GenericMethodParameters);
-        }
-
-        public GenerationContext WithGenericMethodParameters(Type[] genericMethodParameters)
-        {
-            return new GenerationContext(Writer, CurrentNamespace, GenericTypeParameters, genericMethodParameters);
-        }
-
-        public void WriteTypeReference(Type type)
-        {
-            if (type.IsGenericTypeParameter)
+            if (type.SpecialType switch
             {
-                Writer.Write(GenericTypeParameters[type.GenericParameterPosition].Name);
+                SpecialType.System_Void => "void",
+                SpecialType.System_Boolean => "bool",
+                SpecialType.System_Byte => "byte",
+                SpecialType.System_Char => "char",
+                SpecialType.System_Decimal => "decimal",
+                SpecialType.System_Double => "double",
+                SpecialType.System_Int16 => "short",
+                SpecialType.System_Int32 => "int",
+                SpecialType.System_Int64 => "long",
+                SpecialType.System_Object => "object",
+                SpecialType.System_SByte => "sbyte",
+                SpecialType.System_Single => "float",
+                SpecialType.System_String => "string",
+                SpecialType.System_UInt16 => "ushort",
+                SpecialType.System_UInt32 => "uint",
+                SpecialType.System_UInt64 => "ulong",
+                _ => null,
+            } is { } primitiveKeyword)
+            {
+                Writer.Write(primitiveKeyword);
             }
-            else if (type.IsGenericMethodParameter)
+            else if (type is IArrayTypeSymbol array)
             {
-                Writer.Write(GenericMethodParameters[type.GenericParameterPosition].Name);
+                if (!array.IsSZArray) throw new NotImplementedException();
+
+                WriteTypeReference(array.ElementType);
+                Writer.Write("[]");
             }
-            else if (type.IsGenericType)
+            else if (type is IPointerTypeSymbol pointer)
             {
-                if (!string.IsNullOrEmpty(type.Namespace) && type.Namespace != CurrentNamespace)
+                WriteTypeReference(pointer.PointedAtType);
+                Writer.Write('*');
+            }
+            else if (type is INamedTypeSymbol named)
+            {
+                if (type.ContainingType is { })
                 {
-                    Writer.Write(type.Namespace);
+                    WriteTypeReference(type.ContainingType);
+                    Writer.Write('.');
+                }
+                else if (!type.ContainingNamespace.IsGlobalNamespace && !SymbolEqualityComparer.Default.Equals(type.ContainingNamespace, CurrentNamespace))
+                {
+                    Writer.Write(type.ContainingNamespace.ToDisplayString());
                     Writer.Write('.');
                 }
 
-                Writer.Write(MetadataFacts.ParseTypeName(type.Name).Name);
-                Writer.Write('<');
+                Writer.Write(named.Name);
 
-                var genericArguments = type.GetGenericArguments();
-
-                if (type.IsConstructedGenericType)
+                if (named.IsGenericType)
                 {
-                    for (var i = 0; i < genericArguments.Length; i++)
+                    Writer.Write('<');
+
+                    if (named.IsUnboundGenericType)
                     {
-                        if (i != 0) Writer.Write(", ");
-                        WriteTypeReference(genericArguments[i]);
+                        for (var i = 1; i < named.Arity; i++)
+                            Writer.Write(',');
                     }
-                }
-                else
-                {
-                    for (var i = 1; i < genericArguments.Length; i++)
-                        Writer.Write(',');
+                    else
+                    {
+                        for (var i = 0; i < named.TypeArguments.Length; i++)
+                        {
+                            if (i != 0) Writer.Write(", ");
+                            WriteTypeReference(named.TypeArguments[i]);
+                        }
+                    }
+
+                    Writer.Write('>');
                 }
 
-                Writer.Write('>');
+                return;
+            }
+            else if (type is ITypeParameterSymbol)
+            {
+                Writer.Write(type.Name);
             }
             else
             {
-                Writer.Write(type.FullName switch
-                {
-                    "System.Void" => "void",
-                    "System.Boolean" => "bool",
-                    "System.Byte" => "byte",
-                    "System.Char" => "char",
-                    "System.Decimal" => "decimal",
-                    "System.Double" => "double",
-                    "System.Int16" => "short",
-                    "System.Int32" => "int",
-                    "System.Int64" => "long",
-                    "System.Object" => "object",
-                    "System.SByte" => "sbyte",
-                    "System.Single" => "float",
-                    "System.String" => "string",
-                    "System.UInt16" => "ushort",
-                    "System.UInt32" => "uint",
-                    "System.UInt64" => "ulong",
-                    _ => (type.Namespace == CurrentNamespace ? type.Name : type.FullName)
-                        ?? throw new NotImplementedException("Missing type name"),
-                });
+                throw new NotImplementedException();
             }
         }
     }

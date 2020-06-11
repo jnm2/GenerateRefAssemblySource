@@ -1,10 +1,11 @@
-﻿using System;
+﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using System;
 using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 
 namespace GenerateRefAssemblySource
@@ -13,103 +14,131 @@ namespace GenerateRefAssemblySource
     {
         public static void Main(string[] args)
         {
-            var outputDirectory = Path.GetFullPath(".");
+            var sourceFolder = args.Single();
+            var outputDirectory = Directory.GetCurrentDirectory();
 
-            foreach (var filePath in args)
+            var dllFilePaths = Directory.GetFiles(sourceFolder, "*.dll");
+
+            var compilation = CSharpCompilation.Create(
+                assemblyName: string.Empty,
+                syntaxTrees: null,
+                dllFilePaths.Select(path => MetadataReference.CreateFromFile(path)),
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, metadataImportOptions: MetadataImportOptions.Public));
+
+            foreach (var reference in compilation.References)
             {
-                var filesInSameDirectory = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.dll");
-                using var context = new MetadataLoadContext(new PathAssemblyResolver(filesInSameDirectory));
+                var assembly = (IAssemblySymbol?)compilation.GetAssemblyOrModuleSymbol(reference);
+                if (assembly is null) continue;
 
-                GenerateAssembly(
-                    context.LoadFromAssemblyPath(filePath),
-                    new ProjectFileSystem(Path.Join(outputDirectory, context.LoadFromAssemblyPath(filePath).GetName().Name)));
+                VisitAssembly(assembly, new ProjectFileSystem(Path.Join(outputDirectory, assembly.Name)));
             }
         }
 
-        private static void GenerateAssembly(Assembly assembly, IProjectFileSystem fileSystem)
+        private static void VisitAssembly(IAssemblySymbol assembly, IProjectFileSystem fileSystem)
         {
-            foreach (var externallyVisibleType in assembly.GetExportedTypes())
+            VisitNamespace(assembly.GlobalNamespace, fileSystem);
+        }
+
+        private static void VisitNamespace(INamespaceSymbol @namespace, IProjectFileSystem fileSystem)
+        {
+            foreach (var type in @namespace.GetTypeMembers())
             {
-                GenerateType(externallyVisibleType, fileSystem);
+                if (type.DeclaredAccessibility == Accessibility.Public)
+                    VisitType(type, fileSystem);
+            }
+
+            foreach (var containedNamespace in @namespace.GetNamespaceMembers())
+            {
+                VisitNamespace(containedNamespace, fileSystem);
             }
         }
 
-        private static void GenerateType(Type type, IProjectFileSystem fileSystem)
+        private static void VisitType(INamedTypeSymbol type, IProjectFileSystem fileSystem)
+        {
+            var externallyVisibleContainedTypes = type.GetTypeMembers().RemoveAll(t => !MetadataFacts.IsVisibleOutsideAssembly(t));
+
+            GenerateType(type, fileSystem, declareAsPartial: externallyVisibleContainedTypes.Any());
+
+            foreach (var containedType in externallyVisibleContainedTypes)
+            {
+                VisitType(containedType, fileSystem);
+            }
+        }
+
+        private static void GenerateType(INamedTypeSymbol type, IProjectFileSystem fileSystem, bool declareAsPartial)
         {
             using var textWriter = fileSystem.Create(GetPathForType(type));
             using var writer = new IndentedTextWriter(textWriter);
 
-            if (!string.IsNullOrEmpty(type.Namespace))
+            if (!type.ContainingNamespace.IsGlobalNamespace)
             {
                 writer.Write("namespace ");
-                writer.WriteLine(type.Namespace);
+                writer.WriteLine(type.ContainingNamespace.ToDisplayString());
                 writer.WriteLine('{');
                 writer.Indent++;
             }
 
-            var context = new GenerationContext(writer, type.Namespace);
+            var context = new GenerationContext(writer, type.ContainingNamespace);
 
             var containingTypes = MetadataFacts.GetContainingTypes(type);
             foreach (var containingType in containingTypes)
             {
-                context = context.WithGenericTypeParameters(containingType.GetGenericArguments());
                 WriteContainerTypeHeader(containingType, context);
                 writer.WriteLine('{');
                 writer.Indent++;
             }
 
-            context = context.WithGenericTypeParameters(type.GetGenericArguments());
+            WriteAccessibility(type, writer);
 
-            writer.Write("public ");
-
-            var hasExportedNestedTypes = type.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic).Any(MetadataFacts.IsVisibleOutsideAssembly);
-
-            if (type.IsClass && type.BaseType?.FullName == "System.MulticastDelegate")
+            if (type.TypeKind == TypeKind.Delegate)
             {
                 GenerateDelegate(type, context);
             }
-            else if (type.IsEnum)
+            else if (type.TypeKind == TypeKind.Enum)
             {
-                if (hasExportedNestedTypes) writer.Write("partial ");
+                if (declareAsPartial) writer.Write("partial ");
                 GenerateEnum(type, context);
             }
             else
             {
-                if (type.IsInterface)
+                if (type.TypeKind == TypeKind.Interface)
                 {
-                    if (hasExportedNestedTypes) writer.Write("partial ");
+                    if (declareAsPartial) writer.Write("partial ");
                     writer.Write("interface ");
                 }
-                else if (type.IsClass)
+                else if (type.TypeKind == TypeKind.Class)
                 {
                     if (type.IsAbstract)
                         writer.Write(type.IsSealed ? "static " : "abstract ");
                     else if (type.IsSealed)
                         writer.Write("sealed ");
 
-                    if (hasExportedNestedTypes) writer.Write("partial ");
+                    if (declareAsPartial) writer.Write("partial ");
                     writer.Write("class ");
+                }
+                else if (type.TypeKind == TypeKind.Struct)
+                {
+                    if (declareAsPartial) writer.Write("partial ");
+                    writer.Write("struct ");
                 }
                 else
                 {
-                    if (hasExportedNestedTypes) writer.Write("partial ");
-                    writer.Write("struct ");
+                    throw new NotImplementedException(type.TypeKind.ToString());
                 }
 
-                writer.Write(MetadataFacts.ParseTypeName(type.Name).Name);
-                var genericParameters = MetadataFacts.GetNewGenericTypeParameters(type);
-                WriteGenericParameterList(genericParameters, context.Writer);
+                writer.Write(type.Name);
+                WriteGenericParameterList(type, context.Writer);
 
-                var baseTypes = new List<Type>();
+                var baseTypes = new List<INamedTypeSymbol>();
 
-                if (type.BaseType is { } && type.IsClass && type.BaseType.FullName != "System.Object")
+                if (type.BaseType is { SpecialType: not (SpecialType.System_Object or SpecialType.System_ValueType) })
                     baseTypes.Add(type.BaseType);
 
-                baseTypes.AddRange(type.GetInterfaces().Where(i => i.IsVisible));
+                baseTypes.AddRange(type.Interfaces.Where(i => MetadataFacts.IsVisibleOutsideAssembly(i)));
 
                 WriteBaseTypes(baseTypes, context);
 
-                WriteGenericParameterConstraints(genericParameters, context);
+                WriteGenericParameterConstraints(type.TypeParameters, context);
 
                 writer.WriteLine();
                 writer.WriteLine('{');
@@ -122,33 +151,32 @@ namespace GenerateRefAssemblySource
                 writer.WriteLine('}');
             }
 
-            if (!string.IsNullOrEmpty(type.Namespace))
+            if (!type.ContainingNamespace.IsGlobalNamespace)
             {
                 writer.Indent--;
                 writer.WriteLine('}');
             }
         }
 
-        private static void WriteContainerTypeHeader(Type type, GenerationContext context)
+        private static void WriteContainerTypeHeader(INamedTypeSymbol type, GenerationContext context)
         {
             context.Writer.Write("partial ");
 
-            if (type.IsEnum)
-                context.Writer.Write("enum ");
-            else if (type.IsValueType)
-                context.Writer.Write("struct ");
-            else if (type.IsInterface)
-                context.Writer.Write("interface ");
-            else
-                context.Writer.Write("class ");
+            context.Writer.Write(type.TypeKind switch
+            {
+                TypeKind.Enum => "enum ",
+                TypeKind.Struct => "struct ",
+                TypeKind.Interface => "interface ",
+                TypeKind.Class => "class ",
+            });
 
-            context.Writer.Write(MetadataFacts.ParseTypeName(type.Name).Name);
-            WriteGenericParameterList(MetadataFacts.GetNewGenericTypeParameters(type), context.Writer);
+            context.Writer.Write(type.Name);
+            WriteGenericParameterList(type, context.Writer);
 
             context.Writer.WriteLine();
         }
 
-        private static void WriteBaseTypes(IEnumerable<Type> baseTypes, GenerationContext context)
+        private static void WriteBaseTypes(IEnumerable<INamedTypeSymbol> baseTypes, GenerationContext context)
         {
             using var enumerator = baseTypes.GetEnumerator();
 
@@ -164,46 +192,43 @@ namespace GenerateRefAssemblySource
             }
         }
 
-        private static void GenerateDelegate(Type type, GenerationContext context)
+        private static void GenerateDelegate(INamedTypeSymbol type, GenerationContext context)
         {
-            var invokeMethod = type.GetMethod("Invoke") ?? throw new NotImplementedException("No Invoke method found.");
-
             context.Writer.Write("delegate ");
-            context.WriteTypeReference(invokeMethod.ReturnType);
+            context.WriteTypeReference(type.DelegateInvokeMethod!.ReturnType);
             context.Writer.Write(' ');
-            context.Writer.Write(MetadataFacts.ParseTypeName(type.Name).Name);
+            context.Writer.Write(type.Name);
 
-            var genericParameters = MetadataFacts.GetNewGenericTypeParameters(type);
-            WriteGenericParameterList(genericParameters, context.Writer);
-            WriteParameterList(invokeMethod.GetParameters(), context);
-            WriteGenericParameterConstraints(genericParameters, context);
+            WriteGenericParameterList(type, context.Writer);
+            WriteParameterList(type.DelegateInvokeMethod, context);
+            WriteGenericParameterConstraints(type.TypeParameters, context);
 
             context.Writer.WriteLine(';');
         }
 
-        private static void GenerateEnum(Type type, GenerationContext context)
+        private static void GenerateEnum(INamedTypeSymbol type, GenerationContext context)
         {
             context.Writer.Write("enum ");
             context.Writer.Write(type.Name);
 
-            var underlyingType = type.GetEnumUnderlyingType();
-            if (underlyingType.FullName != "System.Int32")
+            if (type.EnumUnderlyingType!.SpecialType != SpecialType.System_Int32)
             {
                 context.Writer.Write(" : ");
-                context.WriteTypeReference(underlyingType);
+                context.WriteTypeReference(type.EnumUnderlyingType);
             }
 
             context.Writer.WriteLine();
             context.Writer.WriteLine('{');
             context.Writer.Indent++;
 
-            foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.Static)
-                .OrderBy(f => f.GetRawConstantValue())
+            foreach (var field in type.GetMembers().OfType<IFieldSymbol>()
+                .Where(f => f.HasConstantValue)
+                .OrderBy(f => f.ConstantValue)
                 .ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
             {
                 context.Writer.Write(field.Name);
                 context.Writer.Write(" = ");
-                context.Writer.Write(field.GetRawConstantValue());
+                context.Writer.Write(field.ConstantValue);
                 context.Writer.WriteLine(',');
             }
 
@@ -211,24 +236,23 @@ namespace GenerateRefAssemblySource
             context.Writer.WriteLine('}');
         }
 
-        private static void WriteGenericParameterList(ImmutableArray<Type> genericParameters, TextWriter writer)
+        private static void WriteGenericParameterList(INamedTypeSymbol type, TextWriter writer)
         {
-            if (!genericParameters.Any()) return;
+            if (!type.TypeParameters.Any()) return;
 
             writer.Write('<');
 
-            for (var i = 0; i < genericParameters.Length; i++)
+            for (var i = 0; i < type.TypeParameters.Length; i++)
             {
                 if (i != 0) writer.Write(", ");
 
-                var genericParameter = genericParameters[i];
+                var genericParameter = type.TypeParameters[i];
 
-                writer.Write((genericParameter.GenericParameterAttributes & GenericParameterAttributes.VarianceMask) switch
+                writer.Write(genericParameter.Variance switch
                 {
-                    GenericParameterAttributes.Covariant => "out ",
-                    GenericParameterAttributes.Contravariant => "in ",
-                    0 => null,
-                    _ => throw new NotSupportedException("Not representable in C#"),
+                    VarianceKind.In => "in ",
+                    VarianceKind.Out => "out ",
+                    _ => null,
                 });
 
                 writer.Write(genericParameter.Name);
@@ -237,52 +261,44 @@ namespace GenerateRefAssemblySource
             writer.Write('>');
         }
 
-        private static void WriteGenericParameterConstraints(ImmutableArray<Type> genericParameters, GenerationContext context)
+        private static void WriteGenericParameterConstraints(ImmutableArray<ITypeParameterSymbol> typeParameters, GenerationContext context)
         {
             context.Writer.Indent++;
 
-            foreach (var parameter in genericParameters)
+            foreach (var typeParameter in typeParameters)
             {
-                const GenericParameterAttributes constraintAttributes = GenericParameterAttributes.NotNullableValueTypeConstraint | GenericParameterAttributes.ReferenceTypeConstraint | GenericParameterAttributes.DefaultConstructorConstraint;
+                var mutuallyExclusiveInitialConstraintKeyword = new[]
+                {
+                    (Condition: typeParameter.HasReferenceTypeConstraint, Keyword: "class"),
+                    (Condition: typeParameter.HasValueTypeConstraint, Keyword: "struct"),
+                    (Condition: typeParameter.HasNotNullConstraint, Keyword: "notnull"),
+                    (Condition: typeParameter.HasUnmanagedTypeConstraint, Keyword: "unmanaged"),
+                }.SingleOrDefault(t => t.Condition).Keyword;
 
-                var constraints = parameter.GetGenericParameterConstraints();
-
-                if ((parameter.GenericParameterAttributes & constraintAttributes) == 0 && !constraints.Any())
+                if (mutuallyExclusiveInitialConstraintKeyword is null
+                    && !typeParameter.HasConstructorConstraint
+                    && !typeParameter.ConstraintTypes.Any())
                 {
                     continue;
                 }
 
                 context.Writer.WriteLine();
                 context.Writer.Write("where ");
-                context.Writer.Write(parameter.Name);
+                context.Writer.Write(typeParameter.Name);
                 context.Writer.Write(" : ");
 
-                var isFirst = false;
+                if (mutuallyExclusiveInitialConstraintKeyword is { })
+                    context.Writer.Write(mutuallyExclusiveInitialConstraintKeyword);
 
-                var hasStructConstraint = (parameter.GenericParameterAttributes & GenericParameterAttributes.NotNullableValueTypeConstraint) != 0;
-                var hasDefaultConstructorConstraint = (parameter.GenericParameterAttributes & GenericParameterAttributes.DefaultConstructorConstraint) != 0;
+                var isFirst = mutuallyExclusiveInitialConstraintKeyword is null;
 
-                if (hasStructConstraint)
-                {
-                    if (!hasDefaultConstructorConstraint) throw new NotSupportedException("Not representable in C#");
-
-                    context.Writer.Write("struct");
-                    isFirst = false;
-                }
-
-                if ((parameter.GenericParameterAttributes & GenericParameterAttributes.ReferenceTypeConstraint) != 0)
-                {
-                    context.Writer.Write("class");
-                    isFirst = false;
-                }
-
-                for (var i = 0; i < constraints.Length; i++)
+                for (var i = 0; i < typeParameter.ConstraintTypes.Length; i++)
                 {
                     if (isFirst) context.Writer.Write(", "); else isFirst = false;
-                    context.WriteTypeReference(constraints[i]);
+                    context.WriteTypeReference(typeParameter.ConstraintTypes[i]);
                 }
 
-                if (hasDefaultConstructorConstraint && !hasStructConstraint)
+                if (typeParameter.HasConstructorConstraint)
                 {
                     if (isFirst) context.Writer.Write(", ");
                     context.Writer.Write("new()");
@@ -292,16 +308,16 @@ namespace GenerateRefAssemblySource
             context.Writer.Indent--;
         }
 
-        private static void WriteParameterList(ParameterInfo[] parameters, GenerationContext context)
+        private static void WriteParameterList(IMethodSymbol method, GenerationContext context)
         {
             context.Writer.Write('(');
 
-            for (var i = 0; i < parameters.Length; i++)
+            for (var i = 0; i < method.Parameters.Length; i++)
             {
                 if (i != 0) context.Writer.Write(", ");
-                var parameter = parameters[i];
+                var parameter = method.Parameters[i];
 
-                context.WriteTypeReference(parameter.ParameterType);
+                context.WriteTypeReference(parameter.Type);
                 context.Writer.Write(' ');
                 context.Writer.Write(parameter.Name);
             }
@@ -309,40 +325,36 @@ namespace GenerateRefAssemblySource
             context.Writer.Write(')');
         }
 
-        private static string GetPathForType(Type type)
+        private static void WriteAccessibility(ISymbol symbol, TextWriter writer)
         {
-            var typeAndDeclaringTypes = new List<Type>();
+            writer.Write(symbol.DeclaredAccessibility switch
+            {
+                Accessibility.Public => "public ",
+                Accessibility.Protected => "protected ",
+                Accessibility.ProtectedOrInternal => "protected "
+            });
+        }
 
-            for (var current = type; current is { }; current = current.DeclaringType)
-                typeAndDeclaringTypes.Add(current);
+        private static string GetPathForType(INamedTypeSymbol type)
+        {
+            var typeAndContainingTypes = new List<INamedTypeSymbol>();
 
-            typeAndDeclaringTypes.Reverse();
+            for (var current = type; current is { }; current = current.ContainingType)
+                typeAndContainingTypes.Add(current);
+
+            typeAndContainingTypes.Reverse();
 
             var filename = new StringBuilder();
 
-            var previouslyDeclaredGenericParameterCount = 0;
-
-            foreach (var typeOrDeclaringType in typeAndDeclaringTypes)
+            foreach (var typeOrContainingType in typeAndContainingTypes)
             {
-                if (typeOrDeclaringType.IsGenericType
-                    && type.GetGenericArguments() is var genericParameters
-                    && genericParameters.Length > previouslyDeclaredGenericParameterCount)
+                filename.Append(typeOrContainingType.Name);
+
+                if (typeOrContainingType.TypeParameters.Any())
                 {
-                    var (name, arity) = MetadataFacts.ParseTypeName(typeOrDeclaringType.Name);
-
-                    if (arity != genericParameters.Length - previouslyDeclaredGenericParameterCount)
-                        throw new NotImplementedException("C# cannot declare a generic type without the metadata name ending with a backtick and the generic arity.");
-
-                    filename.Append(name);
                     filename.Append('{');
-                    filename.AppendJoin(',', genericParameters.Select(p => p.Name));
+                    filename.AppendJoin(',', typeOrContainingType.TypeParameters.Select(p => p.Name));
                     filename.Append('}');
-
-                    previouslyDeclaredGenericParameterCount = genericParameters.Length;
-                }
-                else
-                {
-                    filename.Append(typeOrDeclaringType.Name);
                 }
 
                 filename.Append('.');
@@ -350,7 +362,7 @@ namespace GenerateRefAssemblySource
 
             filename.Append("cs");
 
-            return Path.Join(type.Namespace?.Replace('.', Path.DirectorySeparatorChar), filename.ToString());
+            return Path.Join(type.ContainingNamespace.Name?.Replace('.', Path.DirectorySeparatorChar), filename.ToString());
         }
     }
 }
