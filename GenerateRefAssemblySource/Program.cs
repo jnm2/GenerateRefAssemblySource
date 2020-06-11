@@ -157,20 +157,30 @@ namespace GenerateRefAssemblySource
             WriteGenericParameterList(type, context.Writer);
         }
 
-        private static void WriteBaseTypes(IEnumerable<INamedTypeSymbol> baseTypes, GenerationContext context)
+        private static void WriteBaseTypes(IReadOnlyCollection<INamedTypeSymbol> baseTypes, GenerationContext context)
         {
             using var enumerator = baseTypes.GetEnumerator();
 
             if (!enumerator.MoveNext()) return;
 
-            context.Writer.Write(" : ");
+            context.Writer.Write(" :");
+
+            var multiline = baseTypes.Count > 3;
+            if (multiline) context.Writer.Indent++;
 
             while (true)
             {
+                if (multiline)
+                    context.Writer.WriteLine();
+                else
+                    context.Writer.Write(' ');
+
                 context.WriteTypeReference(enumerator.Current);
                 if (!enumerator.MoveNext()) break;
-                context.Writer.Write(", ");
+                context.Writer.Write(',');
             }
+
+            if (multiline) context.Writer.Indent--;
         }
 
         private static void GenerateDelegate(INamedTypeSymbol type, GenerationContext context)
