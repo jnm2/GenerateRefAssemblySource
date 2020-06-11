@@ -159,7 +159,10 @@ namespace GenerateRefAssemblySource
 
         private static void WriteBaseTypes(IReadOnlyCollection<INamedTypeSymbol> baseTypes, GenerationContext context)
         {
-            using var enumerator = baseTypes.GetEnumerator();
+            using var enumerator = baseTypes
+                .OrderByDescending(context.IsInCurrentNamespace)
+                .ThenBy(t => t, NamespaceOrTypeFullNameComparer.Instance)
+                .GetEnumerator();
 
             if (!enumerator.MoveNext()) return;
 

@@ -15,6 +15,11 @@ namespace GenerateRefAssemblySource
         public IndentedTextWriter Writer { get; }
         public INamespaceSymbol CurrentNamespace { get; }
 
+        public bool IsInCurrentNamespace(INamedTypeSymbol type)
+        {
+            return SymbolEqualityComparer.Default.Equals(type.ContainingNamespace, CurrentNamespace);
+        }
+
         public void WriteTypeReference(ITypeSymbol type)
         {
             if (type.SpecialType switch
@@ -56,10 +61,10 @@ namespace GenerateRefAssemblySource
             {
                 if (type.ContainingType is { })
                 {
-                    WriteTypeReference(type.ContainingType);
+                    WriteTypeReference(named.ContainingType);
                     Writer.Write('.');
                 }
-                else if (!type.ContainingNamespace.IsGlobalNamespace && !SymbolEqualityComparer.Default.Equals(type.ContainingNamespace, CurrentNamespace))
+                else if (!type.ContainingNamespace.IsGlobalNamespace && !IsInCurrentNamespace(named))
                 {
                     Writer.Write(type.ContainingNamespace.ToDisplayString());
                     Writer.Write('.');
