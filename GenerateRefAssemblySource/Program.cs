@@ -83,7 +83,8 @@ namespace GenerateRefAssemblySource
             var containingTypes = MetadataFacts.GetContainingTypes(type);
             foreach (var containingType in containingTypes)
             {
-                WriteContainerTypeHeader(containingType, context);
+                WriteContainerTypeHeader(containingType, declareAsPartial: true, context);
+                writer.WriteLine();
                 writer.WriteLine('{');
                 writer.Indent++;
             }
@@ -101,33 +102,15 @@ namespace GenerateRefAssemblySource
             }
             else
             {
-                if (type.TypeKind == TypeKind.Interface)
-                {
-                    if (declareAsPartial) writer.Write("partial ");
-                    writer.Write("interface ");
-                }
-                else if (type.TypeKind == TypeKind.Class)
+                if (type.TypeKind == TypeKind.Class)
                 {
                     if (type.IsAbstract)
                         writer.Write(type.IsSealed ? "static " : "abstract ");
                     else if (type.IsSealed)
                         writer.Write("sealed ");
-
-                    if (declareAsPartial) writer.Write("partial ");
-                    writer.Write("class ");
-                }
-                else if (type.TypeKind == TypeKind.Struct)
-                {
-                    if (declareAsPartial) writer.Write("partial ");
-                    writer.Write("struct ");
-                }
-                else
-                {
-                    throw new NotImplementedException(type.TypeKind.ToString());
                 }
 
-                writer.Write(type.Name);
-                WriteGenericParameterList(type, context.Writer);
+                WriteContainerTypeHeader(type, declareAsPartial, context);
 
                 var baseTypes = new List<INamedTypeSymbol>();
 
@@ -158,9 +141,9 @@ namespace GenerateRefAssemblySource
             }
         }
 
-        private static void WriteContainerTypeHeader(INamedTypeSymbol type, GenerationContext context)
+        private static void WriteContainerTypeHeader(INamedTypeSymbol type, bool declareAsPartial, GenerationContext context)
         {
-            context.Writer.Write("partial ");
+            if (declareAsPartial) context.Writer.Write("partial ");
 
             context.Writer.Write(type.TypeKind switch
             {
@@ -172,8 +155,6 @@ namespace GenerateRefAssemblySource
 
             context.Writer.Write(type.Name);
             WriteGenericParameterList(type, context.Writer);
-
-            context.Writer.WriteLine();
         }
 
         private static void WriteBaseTypes(IEnumerable<INamedTypeSymbol> baseTypes, GenerationContext context)
