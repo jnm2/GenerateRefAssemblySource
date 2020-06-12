@@ -66,6 +66,12 @@ namespace GenerateRefAssemblySource
             }
             else if (type is INamedTypeSymbol named)
             {
+                if (string.IsNullOrWhiteSpace(named.Name))
+                {
+                    Writer.Write("/* ERROR */");
+                    return;
+                }
+
                 if (type.ContainingType is { })
                 {
                     WriteTypeReference(named.ContainingType);
