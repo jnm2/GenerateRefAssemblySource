@@ -219,6 +219,14 @@ namespace GenerateRefAssemblySource
                         context.Writer.WriteLine(';');
                         break;
 
+                    case IEventSymbol e:
+                        context.Writer.Write("event ");
+                        context.WriteTypeReference(e.Type);
+                        context.Writer.Write(' ');
+                        context.WriteIdentifier(e.Name);
+                        context.Writer.WriteLine(';');
+                        break;
+
                     case IPropertySymbol p:
                         context.WriteTypeReference(p.Type);
                         context.Writer.Write(' ');
@@ -304,11 +312,7 @@ namespace GenerateRefAssemblySource
                         break;
 
                     default:
-                        context.Writer.Write("// TODO: ");
-                        context.Writer.Write(sortKind!.Value);
-                        context.Writer.Write(' ');
-                        context.Writer.WriteLine(member.Name);
-                        break;
+                        throw new NotImplementedException();
                 }
             }
         }
