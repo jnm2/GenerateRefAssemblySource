@@ -280,21 +280,22 @@ namespace GenerateRefAssemblySource
                         }
 
                         context.WriteTypeReference(m.ReturnType);
-                        context.Writer.Write(' ');
 
                         switch (m.MethodKind)
                         {
                             case MethodKind.Ordinary:
+                                context.Writer.Write(' ');
                                 context.WriteIdentifier(m.Name);
                                 break;
 
                             case MethodKind.Constructor:
                             case MethodKind.StaticConstructor:
+                                context.Writer.Write(' ');
                                 context.WriteIdentifier(type.Name);
                                 break;
 
                             case MethodKind.UserDefinedOperator:
-                                context.Writer.Write("operator ");
+                                context.Writer.Write(" operator ");
                                 SyntaxFactory.Token(SyntaxFacts.GetOperatorKind(m.Name)).WriteTo(context.Writer);
                                 break;
 
