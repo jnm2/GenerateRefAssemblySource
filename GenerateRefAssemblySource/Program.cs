@@ -180,7 +180,17 @@ namespace GenerateRefAssemblySource
                     context.Writer.WriteLine(")]");
                 }
 
-                WriteAccessibility(member.DeclaredAccessibility, context.Writer);
+                if (!(member.DeclaredAccessibility == Accessibility.Public && type.TypeKind == TypeKind.Interface))
+                    WriteAccessibility(member.DeclaredAccessibility, context.Writer);
+
+                if (member.Kind != SymbolKind.Field)
+                {
+                    if (member.IsStatic) context.Writer.Write("static ");
+                    if (member.IsVirtual) context.Writer.Write("virtual ");
+                    if (member.IsAbstract && type.TypeKind != TypeKind.Interface) context.Writer.Write("abstract ");
+                    if (member.IsSealed) context.Writer.Write("sealed ");
+                    if (member.IsOverride) context.Writer.Write("override ");
+                }
 
                 switch (member)
                 {
@@ -210,12 +220,6 @@ namespace GenerateRefAssemblySource
                         break;
 
                     case IPropertySymbol p:
-                        if (member.IsStatic) context.Writer.Write("static ");
-                        if (member.IsVirtual) context.Writer.Write("virtual ");
-                        if (member.IsAbstract) context.Writer.Write("abstract ");
-                        if (member.IsSealed) context.Writer.Write("sealed ");
-                        if (member.IsOverride) context.Writer.Write("override ");
-
                         context.WriteTypeReference(p.Type);
                         context.Writer.Write(' ');
 
@@ -258,12 +262,6 @@ namespace GenerateRefAssemblySource
                         break;
 
                     case IMethodSymbol m:
-                        if (member.IsStatic) context.Writer.Write("static ");
-                        if (member.IsVirtual) context.Writer.Write("virtual ");
-                        if (member.IsAbstract) context.Writer.Write("abstract ");
-                        if (member.IsSealed) context.Writer.Write("sealed ");
-                        if (member.IsOverride) context.Writer.Write("override ");
-
                         if (m.MethodKind == MethodKind.Conversion)
                         {
                             context.Writer.Write(m.Name switch
