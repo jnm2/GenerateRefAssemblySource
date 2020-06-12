@@ -121,8 +121,11 @@ namespace GenerateRefAssemblySource
             }
         }
 
-        public void WriteTargetTypedLiteral(ITypeSymbol type, object? value)
+        public void WriteLiteral(ITypeSymbol type, object? value)
         {
+            if (type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+                throw new NotImplementedException();
+
             if (type.TypeKind == TypeKind.Enum)
             {
                 var members = MetadataFacts.GetCombinedEnumMembers(type, value);
@@ -146,15 +149,47 @@ namespace GenerateRefAssemblySource
                 case null:
                     Writer.Write(CanUseNullKeyword(type) ? "null" : "default");
                     break;
-                case double d:
-                    WriteTargetTypedLiteral(d);
+                case int i:
+                    WriteLiteral(i);
+                    break;
+                case uint u:
+                    WriteLiteral(u);
+                    break;
+                case long l:
+                    WriteLiteral(l);
+                    break;
+                case ulong u:
+                    WriteLiteral(u);
+                    break;
+                case byte b:
+                    WriteLiteral(b);
+                    break;
+                case sbyte s:
+                    WriteLiteral(s);
+                    break;
+                case short s:
+                    WriteLiteral(s);
+                    break;
+                case ushort u:
+                    WriteLiteral(u);
                     break;
                 case string s:
-                    WriteTargetTypedLiteral(s);
+                    WriteLiteral(s);
+                    break;
+                case char c:
+                    WriteLiteral(c);
+                    break;
+                case double d:
+                    WriteLiteral(d);
+                    break;
+                case float f:
+                    WriteLiteral(f);
+                    break;
+                case decimal d:
+                    WriteLiteral(d);
                     break;
                 default:
-                    Writer.Write("/* TODO */");
-                    break;
+                    throw new NotImplementedException();
             }
         }
 
@@ -163,7 +198,63 @@ namespace GenerateRefAssemblySource
             return type.IsReferenceType || type is IPointerTypeSymbol || type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
         }
 
-        public void WriteTargetTypedLiteral(double value)
+        public void WriteLiteral(int value)
+        {
+            if (value == int.MaxValue)
+                Writer.Write("int.MaxValue");
+            else if (value == int.MinValue)
+                Writer.Write("int.MinValue");
+            else
+                SyntaxFactory.Literal(value).WriteTo(Writer);
+        }
+
+        public void WriteLiteral(uint value)
+        {
+            if (value == uint.MaxValue)
+                Writer.Write("int.MaxValue");
+            else
+                SyntaxFactory.Literal(value).WriteTo(Writer);
+        }
+
+        public void WriteLiteral(long value)
+        {
+            if (value == long.MaxValue)
+                Writer.Write("long.MaxValue");
+            else if (value == long.MinValue)
+                Writer.Write("long.MinValue");
+            else
+                SyntaxFactory.Literal(value).WriteTo(Writer);
+        }
+
+        public void WriteLiteral(ulong value)
+        {
+            if (value == ulong.MaxValue)
+                Writer.Write("long.MaxValue");
+            else
+                SyntaxFactory.Literal(value).WriteTo(Writer);
+        }
+
+        public void WriteLiteral(byte value)
+        {
+            SyntaxFactory.Literal(value).WriteTo(Writer);
+        }
+
+        public void WriteLiteral(sbyte value)
+        {
+            SyntaxFactory.Literal(value).WriteTo(Writer);
+        }
+
+        public void WriteLiteral(short value)
+        {
+            SyntaxFactory.Literal(value).WriteTo(Writer);
+        }
+
+        public void WriteLiteral(ushort value)
+        {
+            SyntaxFactory.Literal(value).WriteTo(Writer);
+        }
+
+        public void WriteLiteral(double value)
         {
             if (double.IsInfinity(value))
             {
@@ -196,7 +287,55 @@ namespace GenerateRefAssemblySource
             }
         }
 
-        public void WriteTargetTypedLiteral(string value)
+        public void WriteLiteral(float value)
+        {
+            if (float.IsInfinity(value))
+            {
+                if (float.IsPositiveInfinity(value))
+                    Writer.Write("float.PositiveInfinity");
+                else if (float.IsNegativeInfinity(value))
+                    Writer.Write("float.NegativeInfinity");
+                else
+                    throw new NotImplementedException();
+            }
+            else if (float.IsNaN(value))
+            {
+                Writer.Write("float.NaN");
+            }
+            else if (value == float.MaxValue)
+            {
+                Writer.Write("float.MaxValue");
+            }
+            else if (value == float.MinValue)
+            {
+                Writer.Write("float.MinValue");
+            }
+            else if (value == float.Epsilon)
+            {
+                Writer.Write("float.Epsilon");
+            }
+            else
+            {
+                SyntaxFactory.Literal(value).WriteTo(Writer);
+            }
+        }
+
+        public void WriteLiteral(decimal value)
+        {
+            if (value == decimal.MaxValue)
+                Writer.Write("decimal.MaxValue");
+            else if (value == decimal.MinValue)
+                Writer.Write("decimal.MinValue");
+            else
+                SyntaxFactory.Literal(value).WriteTo(Writer);
+        }
+
+        public void WriteLiteral(char value)
+        {
+            SyntaxFactory.Literal(value).WriteTo(Writer);
+        }
+
+        public void WriteLiteral(string value)
         {
             if (value is null) throw new ArgumentNullException(nameof(value));
 

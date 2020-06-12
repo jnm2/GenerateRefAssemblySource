@@ -176,7 +176,7 @@ namespace GenerateRefAssemblySource
                 if (member is IPropertySymbol { IsIndexer: true, MetadataName: not "Item" and var indexerName })
                 {
                     context.Writer.Write("[System.Runtime.CompilerServices.IndexerName(");
-                    context.WriteTargetTypedLiteral(indexerName);
+                    context.WriteLiteral(indexerName);
                     context.Writer.WriteLine(")]");
                 }
 
@@ -202,7 +202,7 @@ namespace GenerateRefAssemblySource
                         if (f.IsConst)
                         {
                             context.Writer.Write(" = ");
-                            context.WriteTargetTypedLiteral(f.Type, f.ConstantValue);
+                            context.WriteLiteral(f.Type, f.ConstantValue);
                         }
 
                         context.Writer.WriteLine(';');
@@ -444,7 +444,7 @@ namespace GenerateRefAssemblySource
                 {
                     if (!parameter.IsOptional) throw new NotImplementedException();
                     context.Writer.Write(" = ");
-                    context.WriteTargetTypedLiteral(parameter.Type, parameter.ExplicitDefaultValue);
+                    context.WriteLiteral(parameter.Type, parameter.ExplicitDefaultValue);
                 }
                 else if (parameter.IsOptional)
                 {
