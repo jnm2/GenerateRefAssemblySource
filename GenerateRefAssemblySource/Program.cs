@@ -257,6 +257,54 @@ namespace GenerateRefAssemblySource
                         context.Writer.WriteLine('}');
                         break;
 
+                    case IMethodSymbol m:
+                        if (member.IsStatic) context.Writer.Write("static ");
+                        if (member.IsVirtual) context.Writer.Write("virtual ");
+                        if (member.IsAbstract) context.Writer.Write("abstract ");
+                        if (member.IsSealed) context.Writer.Write("sealed ");
+                        if (member.IsOverride) context.Writer.Write("override ");
+
+                        if (m.MethodKind == MethodKind.Conversion)
+                        {
+                            context.Writer.Write(m.Name switch
+                            {
+                                WellKnownMemberNames.ImplicitConversionName => "implicit operator ",
+                                WellKnownMemberNames.ExplicitConversionName => "explicit operator ",
+                            });
+                        }
+
+                        context.WriteTypeReference(m.ReturnType);
+                        context.Writer.Write(' ');
+
+                        switch (m.MethodKind)
+                        {
+                            case MethodKind.Ordinary:
+                                context.WriteIdentifier(m.Name);
+                                break;
+
+                            case MethodKind.Constructor:
+                            case MethodKind.StaticConstructor:
+                                context.WriteIdentifier(type.Name);
+                                break;
+
+                            case MethodKind.UserDefinedOperator:
+                                context.Writer.Write("operator ");
+                                SyntaxFactory.Token(SyntaxFacts.GetOperatorKind(m.Name)).WriteTo(context.Writer);
+                                break;
+
+                            case MethodKind.Conversion:
+                                break;
+
+                            default:
+                                throw new NotImplementedException();
+                        }
+
+                        WriteGenericParameterList(m.TypeParameters, context);
+                        WriteParameterList(m, context);
+                        WriteGenericParameterConstraints(m.TypeParameters, context);
+                        context.Writer.WriteLine(';');
+                        break;
+
                     default:
                         context.Writer.Write("// TODO: ");
                         context.Writer.Write(sortKind!.Value);
@@ -280,7 +328,7 @@ namespace GenerateRefAssemblySource
             });
 
             context.WriteIdentifier(type.Name);
-            WriteGenericParameterList(type, context);
+            WriteGenericParameterList(type.TypeParameters, context);
         }
 
         private static void WriteBaseTypes(IReadOnlyCollection<INamedTypeSymbol> baseTypes, GenerationContext context)
@@ -319,7 +367,7 @@ namespace GenerateRefAssemblySource
             context.Writer.Write(' ');
             context.WriteIdentifier(type.Name);
 
-            WriteGenericParameterList(type, context);
+            WriteGenericParameterList(type.TypeParameters, context);
             WriteParameterList(type.DelegateInvokeMethod, context);
             WriteGenericParameterConstraints(type.TypeParameters, context);
 
@@ -356,17 +404,17 @@ namespace GenerateRefAssemblySource
             context.Writer.WriteLine('}');
         }
 
-        private static void WriteGenericParameterList(INamedTypeSymbol type, GenerationContext context)
+        private static void WriteGenericParameterList(ImmutableArray<ITypeParameterSymbol> typeParameters, GenerationContext context)
         {
-            if (!type.TypeParameters.Any()) return;
+            if (!typeParameters.Any()) return;
 
             context.Writer.Write('<');
 
-            for (var i = 0; i < type.TypeParameters.Length; i++)
+            for (var i = 0; i < typeParameters.Length; i++)
             {
                 if (i != 0) context.Writer.Write(", ");
 
-                var genericParameter = type.TypeParameters[i];
+                var genericParameter = typeParameters[i];
 
                 context.Writer.Write(genericParameter.Variance switch
                 {

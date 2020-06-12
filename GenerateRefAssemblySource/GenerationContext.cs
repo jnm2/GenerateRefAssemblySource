@@ -149,6 +149,9 @@ namespace GenerateRefAssemblySource
                 case null:
                     Writer.Write(CanUseNullKeyword(type) ? "null" : "default");
                     break;
+                case bool b:
+                    WriteLiteral(b);
+                    break;
                 case int i:
                     WriteLiteral(i);
                     break;
@@ -196,6 +199,11 @@ namespace GenerateRefAssemblySource
         private static bool CanUseNullKeyword(ITypeSymbol type)
         {
             return type.IsReferenceType || type is IPointerTypeSymbol || type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
+        }
+
+        public void WriteLiteral(bool value)
+        {
+            Writer.Write(value ? "true" : "false");
         }
 
         public void WriteLiteral(int value)
@@ -344,8 +352,6 @@ namespace GenerateRefAssemblySource
 
         public void WriteIdentifier(string name)
         {
-            if (!SyntaxFacts.IsValidIdentifier(name)) throw new NotImplementedException();
-
             if (SyntaxFacts.IsReservedKeyword(SyntaxFacts.GetKeywordKind(name)))
                 Writer.Write('@');
 
