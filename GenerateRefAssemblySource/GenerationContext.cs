@@ -47,6 +47,11 @@ namespace GenerateRefAssemblySource
             {
                 Writer.Write(primitiveKeyword);
             }
+            else if (type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T)
+            {
+                WriteTypeReference(((INamedTypeSymbol)type).TypeArguments.Single());
+                Writer.Write('?');
+            }
             else if (type is IArrayTypeSymbol array)
             {
                 if (!array.Sizes.IsDefaultOrEmpty || !array.LowerBounds.IsDefaultOrEmpty) throw new NotImplementedException();
