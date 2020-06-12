@@ -464,13 +464,13 @@ namespace GenerateRefAssemblySource
 
                 for (var i = 0; i < typeParameter.ConstraintTypes.Length; i++)
                 {
-                    if (isFirst) context.Writer.Write(", "); else isFirst = false;
+                    if (isFirst) isFirst = false; else context.Writer.Write(", ");
                     context.WriteTypeReference(typeParameter.ConstraintTypes[i]);
                 }
 
                 if (typeParameter.HasConstructorConstraint)
                 {
-                    if (isFirst) context.Writer.Write(", ");
+                    if (!isFirst) context.Writer.Write(", ");
                     context.Writer.Write("new()");
                 }
             }
