@@ -492,6 +492,11 @@ namespace GenerateRefAssemblySource
                 if (i != 0) context.Writer.Write(", ");
                 var parameter = parameters[i];
 
+                if (parameter.IsOptional && !parameter.HasExplicitDefaultValue)
+                {
+                    context.Writer.Write("[System.Runtime.InteropServices.Optional] ");
+                }
+
                 context.WriteTypeReference(parameter.Type);
                 context.Writer.Write(' ');
                 context.WriteIdentifier(parameter.Name);
@@ -501,10 +506,6 @@ namespace GenerateRefAssemblySource
                     if (!parameter.IsOptional) throw new NotImplementedException();
                     context.Writer.Write(" = ");
                     context.WriteLiteral(parameter.Type, parameter.ExplicitDefaultValue);
-                }
-                else if (parameter.IsOptional)
-                {
-                    context.Writer.Write("[System.Runtime.InteropServices.Optional] ");
                 }
             }
         }
