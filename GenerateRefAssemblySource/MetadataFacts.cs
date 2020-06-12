@@ -72,16 +72,16 @@ namespace GenerateRefAssemblySource
             }
         }
 
-        public static bool IsVisibleOutsideAssembly(INamedTypeSymbol type)
+        public static bool IsVisibleOutsideAssembly(ISymbol typeMember)
         {
-            switch (type.DeclaredAccessibility)
+            switch (typeMember.DeclaredAccessibility)
             {
                 case Accessibility.Public:
-                    return type.ContainingType is null || IsVisibleOutsideAssembly(type.ContainingType);
+                    return typeMember.ContainingType is null || IsVisibleOutsideAssembly(typeMember.ContainingType);
 
                 case Accessibility.Protected:
                 case Accessibility.ProtectedOrInternal:
-                    return IsVisibleOutsideAssembly(type.ContainingType!) && IsInheritable(type.ContainingType!);
+                    return IsVisibleOutsideAssembly(typeMember.ContainingType!) && IsInheritable(typeMember.ContainingType!);
 
                 default:
                     return false;
@@ -107,6 +107,25 @@ namespace GenerateRefAssemblySource
                 default:
                     return false;
             }
+        }
+
+        public static TypeMemberSortKind? GetTypeMemberSortKind(ISymbol symbol)
+        {
+            return symbol switch
+            {
+                IFieldSymbol { IsConst: true } => TypeMemberSortKind.Constant,
+                IFieldSymbol => TypeMemberSortKind.Field,
+                IMethodSymbol { MethodKind: MethodKind.Constructor or MethodKind.StaticConstructor } => TypeMemberSortKind.Constructor,
+                IMethodSymbol { MethodKind: MethodKind.Destructor } => null, // Not public API
+                IPropertySymbol { IsIndexer: true } => TypeMemberSortKind.Indexer,
+                IPropertySymbol => TypeMemberSortKind.Property,
+                IEventSymbol => TypeMemberSortKind.Event,
+                IMethodSymbol { MethodKind: MethodKind.Ordinary } => TypeMemberSortKind.Method,
+                IMethodSymbol { MethodKind: MethodKind.UserDefinedOperator } => TypeMemberSortKind.Operator,
+                IMethodSymbol { MethodKind: MethodKind.Conversion } => TypeMemberSortKind.Conversion,
+                IMethodSymbol { AssociatedSymbol: { } } => null, // Only the associated symbol is generated
+                ITypeSymbol => null, // Nested types get their own files and type parameters are in the type header line
+            };
         }
     }
 }

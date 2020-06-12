@@ -12,6 +12,17 @@ namespace GenerateRefAssemblySource
 {
     public static class Program
     {
+        private static readonly ImmutableArray<TypeMemberSortKind> TypeMemberOrder = ImmutableArray.Create(
+            TypeMemberSortKind.Constant,
+            TypeMemberSortKind.Field,
+            TypeMemberSortKind.Constructor,
+            TypeMemberSortKind.Property,
+            TypeMemberSortKind.Indexer,
+            TypeMemberSortKind.Event,
+            TypeMemberSortKind.Method,
+            TypeMemberSortKind.Operator,
+            TypeMemberSortKind.Conversion);
+
         public static void Main(string[] args)
         {
             var sourceFolder = args.Single();
@@ -89,7 +100,7 @@ namespace GenerateRefAssemblySource
                 writer.Indent++;
             }
 
-            WriteAccessibility(type, writer);
+            WriteAccessibility(type.DeclaredAccessibility, writer);
 
             if (type.TypeKind == TypeKind.Delegate)
             {
@@ -125,6 +136,11 @@ namespace GenerateRefAssemblySource
 
                 writer.WriteLine();
                 writer.WriteLine('{');
+                writer.Indent++;
+
+                WriteTypeMembers(type, context);
+
+                writer.Indent--;
                 writer.WriteLine('}');
             }
 
@@ -138,6 +154,34 @@ namespace GenerateRefAssemblySource
             {
                 writer.Indent--;
                 writer.WriteLine('}');
+            }
+        }
+
+        private static void WriteTypeMembers(INamedTypeSymbol type, GenerationContext context)
+        {
+            var isFirst = true;
+
+            foreach (var (member, sortKind) in type.GetMembers()
+                .Where(MetadataFacts.IsVisibleOutsideAssembly)
+                .Select(m => (Member: m, SortKind: MetadataFacts.GetTypeMemberSortKind(m)))
+                .Where(m => m.SortKind is not null)
+                .OrderBy(m => TypeMemberOrder.IndexOf(m.SortKind!.Value))
+                .ThenByDescending(m => m.Member.DeclaredAccessibility == Accessibility.Public)
+                .ThenByDescending(m => m.Member.IsStatic)
+                .ThenByDescending(m => (m.Member as IFieldSymbol)?.IsReadOnly)
+                .ThenBy(m => m.Member.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                if (isFirst) isFirst = false; else context.Writer.WriteLine();
+
+                switch (sortKind!.Value)
+                {
+                    default:
+                        context.Writer.Write("// TODO: ");
+                        context.Writer.Write(sortKind!.Value);
+                        context.Writer.Write(' ');
+                        context.Writer.WriteLine(member.Name);
+                        break;
+                }
             }
         }
 
@@ -319,9 +363,9 @@ namespace GenerateRefAssemblySource
             context.Writer.Write(')');
         }
 
-        private static void WriteAccessibility(ISymbol symbol, TextWriter writer)
+        private static void WriteAccessibility(Accessibility accessibility, TextWriter writer)
         {
-            writer.Write(symbol.DeclaredAccessibility switch
+            writer.Write(accessibility switch
             {
                 Accessibility.Public => "public ",
                 Accessibility.Protected => "protected ",
