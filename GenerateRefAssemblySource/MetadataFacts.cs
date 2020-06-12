@@ -1,4 +1,5 @@
 ﻿using Microsoft.CodeAnalysis;
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -125,6 +126,56 @@ namespace GenerateRefAssemblySource
                 IMethodSymbol { MethodKind: MethodKind.Conversion } => TypeMemberSortKind.Conversion,
                 IMethodSymbol { AssociatedSymbol: { } } => null, // Only the associated symbol is generated
                 ITypeSymbol => null, // Nested types get their own files and type parameters are in the type header line
+            };
+        }
+
+        public static ImmutableArray<IFieldSymbol> GetCombinedEnumMembers(ITypeSymbol enumType, object? value)
+        {
+            if (enumType.TypeKind != TypeKind.Enum)
+                throw new ArgumentException("An enum type must be specified.", nameof(enumType));
+
+            var firstMemberWithSameValue = enumType.GetMembers()
+                .OfType<IFieldSymbol>()
+                .Where(f => f.HasConstantValue && Equals(f.ConstantValue, value))
+                .Take(1) // Don't sort alphabetically; it won't keep things stable when new items are added anyway.
+                .ToImmutableArray();
+
+            if (IsFlagsEnum(enumType) && firstMemberWithSameValue.IsEmpty)
+                throw new NotImplementedException();
+
+            return firstMemberWithSameValue;
+        }
+
+        public static bool IsFlagsEnum(ITypeSymbol enumType)
+        {
+            if (enumType.TypeKind != TypeKind.Enum)
+                throw new ArgumentException("An enum type must be specified.", nameof(enumType));
+
+            foreach (var attribute in enumType.GetAttributes())
+            {
+                if (attribute.AttributeConstructor is { Parameters: { IsEmpty: true } }
+                    && IsFlagsAttribute(attribute.AttributeConstructor.ContainingType))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public static bool IsFlagsAttribute(ITypeSymbol type)
+        {
+            return type is
+            {
+                Name: nameof(FlagsAttribute),
+                ContainingSymbol: INamespaceSymbol
+                {
+                    Name: nameof(System),
+                    ContainingSymbol: INamespaceSymbol
+                    {
+                        IsGlobalNamespace: true
+                    }
+                }
             };
         }
     }

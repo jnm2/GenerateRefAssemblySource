@@ -2,6 +2,7 @@
 using Microsoft.CodeAnalysis.CSharp;
 using System;
 using System.CodeDom.Compiler;
+using System.Linq;
 
 namespace GenerateRefAssemblySource
 {
@@ -122,7 +123,25 @@ namespace GenerateRefAssemblySource
 
         public void WriteTargetTypedLiteral(ITypeSymbol type, object? value)
         {
-            switch (value)
+            if (type.TypeKind == TypeKind.Enum)
+            {
+                var members = MetadataFacts.GetCombinedEnumMembers(type, value);
+                if (members.Any())
+                {
+                    for (var i = 0; i < members.Length; i++)
+                    {
+                        if (i != 0) Writer.Write(" | ");
+                        WriteTypeReference(type);
+                        Writer.Write('.');
+                        WriteIdentifier(members[i].Name);
+                    }
+                }
+                else
+                {
+                    throw new NotImplementedException();
+                }
+            }
+            else switch (value)
             {
                 case null:
                     Writer.Write(CanUseNullKeyword(type) ? "null" : "default");
