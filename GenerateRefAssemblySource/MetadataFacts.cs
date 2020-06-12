@@ -1,4 +1,5 @@
 ﻿using Microsoft.CodeAnalysis;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 
@@ -20,6 +21,55 @@ namespace GenerateRefAssemblySource
 
             builder.Reverse();
             return builder.ToImmutable();
+        }
+
+        public static ImmutableArray<INamedTypeSymbol> RemoveBaseTypes(IEnumerable<INamedTypeSymbol> types)
+        {
+            var builder = ImmutableArray.CreateBuilder<INamedTypeSymbol>();
+
+            foreach (var incoming in types)
+            {
+                if (builder.Any(other => ImplementsOrInherits(other, incoming)))
+                    continue;
+
+                for (var i = builder.Count - 1; i >= 0; i--)
+                {
+                    if (ImplementsOrInherits(incoming, builder[i]))
+                        builder.RemoveAt(i);
+                }
+
+                builder.Add(incoming);
+            }
+
+            return builder.ToImmutable();
+        }
+
+        public static bool ImplementsOrInherits(INamedTypeSymbol type, INamedTypeSymbol possibleBaseType)
+        {
+            foreach (var baseType in EnumerateBaseTypes(type))
+            {
+                if (SymbolEqualityComparer.Default.Equals(baseType, possibleBaseType))
+                    return true;
+            }
+
+            foreach (var interfaceType in type.AllInterfaces)
+            {
+                if (SymbolEqualityComparer.Default.Equals(interfaceType, possibleBaseType))
+                    return true;
+            }
+
+            return false;
+        }
+
+        public static IEnumerable<INamedTypeSymbol> EnumerateBaseTypes(INamedTypeSymbol type)
+        {
+            var current = type;
+            while (true)
+            {
+                current = current.BaseType;
+                if (current is null) break;
+                yield return current;
+            }
         }
 
         public static bool IsVisibleOutsideAssembly(INamedTypeSymbol type)

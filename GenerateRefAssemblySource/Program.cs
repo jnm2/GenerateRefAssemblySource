@@ -119,7 +119,7 @@ namespace GenerateRefAssemblySource
 
                 baseTypes.AddRange(type.Interfaces.Where(i => MetadataFacts.IsVisibleOutsideAssembly(i)));
 
-                WriteBaseTypes(baseTypes, context);
+                WriteBaseTypes(MetadataFacts.RemoveBaseTypes(baseTypes), context);
 
                 WriteGenericParameterConstraints(type.TypeParameters, context);
 
