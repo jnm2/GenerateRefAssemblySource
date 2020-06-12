@@ -1,4 +1,5 @@
 ﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using System;
 using System.CodeDom.Compiler;
 
@@ -47,10 +48,15 @@ namespace GenerateRefAssemblySource
             }
             else if (type is IArrayTypeSymbol array)
             {
-                if (!array.IsSZArray) throw new NotImplementedException();
+                if (!array.Sizes.IsDefaultOrEmpty || !array.LowerBounds.IsDefaultOrEmpty) throw new NotImplementedException();
 
                 WriteTypeReference(array.ElementType);
-                Writer.Write("[]");
+                Writer.Write('[');
+
+                for (var i = 1; i < array.Rank; i++)
+                    Writer.Write(',');
+
+                Writer.Write(']');
             }
             else if (type is IPointerTypeSymbol pointer)
             {
@@ -79,7 +85,7 @@ namespace GenerateRefAssemblySource
                     }
                 }
 
-                Writer.Write(named.Name);
+                WriteIdentifier(type.Name);
 
                 if (named.IsGenericType)
                 {
@@ -106,12 +112,86 @@ namespace GenerateRefAssemblySource
             }
             else if (type is ITypeParameterSymbol)
             {
-                Writer.Write(type.Name);
+                WriteIdentifier(type.Name);
             }
             else
             {
                 throw new NotImplementedException();
             }
+        }
+
+        public void WriteTargetTypedLiteral(ITypeSymbol type, object? value)
+        {
+            switch (value)
+            {
+                case null:
+                    Writer.Write(CanUseNullKeyword(type) ? "null" : "default");
+                    break;
+                case double d:
+                    WriteTargetTypedLiteral(d);
+                    break;
+                case string s:
+                    WriteTargetTypedLiteral(s);
+                    break;
+                default:
+                    Writer.Write("/* TODO */");
+                    break;
+            }
+        }
+
+        private static bool CanUseNullKeyword(ITypeSymbol type)
+        {
+            return type.IsReferenceType || type is IPointerTypeSymbol || type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
+        }
+
+        public void WriteTargetTypedLiteral(double value)
+        {
+            if (double.IsInfinity(value))
+            {
+                if (double.IsPositiveInfinity(value))
+                    Writer.Write("double.PositiveInfinity");
+                else if (double.IsNegativeInfinity(value))
+                    Writer.Write("double.NegativeInfinity");
+                else
+                    throw new NotImplementedException();
+            }
+            else if (double.IsNaN(value))
+            {
+                Writer.Write("double.NaN");
+            }
+            else if (value == double.MaxValue)
+            {
+                Writer.Write("double.MaxValue");
+            }
+            else if (value == double.MinValue)
+            {
+                Writer.Write("double.MinValue");
+            }
+            else if (value == double.Epsilon)
+            {
+                Writer.Write("double.Epsilon");
+            }
+            else
+            {
+                SyntaxFactory.Literal(value).WriteTo(Writer);
+            }
+        }
+
+        public void WriteTargetTypedLiteral(string value)
+        {
+            if (value is null) throw new ArgumentNullException(nameof(value));
+
+            SyntaxFactory.Literal(value).WriteTo(Writer);
+        }
+
+        public void WriteIdentifier(string name)
+        {
+            if (!SyntaxFacts.IsValidIdentifier(name)) throw new NotImplementedException();
+
+            if (SyntaxFacts.IsReservedKeyword(SyntaxFacts.GetKeywordKind(name)))
+                Writer.Write('@');
+
+            Writer.Write(name);
         }
     }
 }

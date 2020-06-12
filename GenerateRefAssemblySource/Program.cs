@@ -173,8 +173,84 @@ namespace GenerateRefAssemblySource
             {
                 if (isFirst) isFirst = false; else context.Writer.WriteLine();
 
-                switch (sortKind!.Value)
+                if (member is IPropertySymbol { IsIndexer: true, MetadataName: not "Item" and var indexerName })
                 {
+                    context.Writer.Write("[System.Runtime.CompilerServices.IndexerName(");
+                    context.WriteTargetTypedLiteral(indexerName);
+                    context.Writer.WriteLine(")]");
+                }
+
+                WriteAccessibility(member.DeclaredAccessibility, context.Writer);
+
+                if (member.IsStatic) context.Writer.Write("static ");
+                if (member.IsVirtual) context.Writer.Write("virtual ");
+                if (member.IsAbstract) context.Writer.Write("abstract ");
+                if (member.IsSealed) context.Writer.Write("sealed ");
+                if (member.IsOverride) context.Writer.Write("override ");
+
+                switch (member)
+                {
+                    case IFieldSymbol f:
+                        // TODO: Unsafe
+                        if (f.IsVolatile) context.Writer.Write("volatile ");
+                        if (f.IsReadOnly) context.Writer.Write("readonly ");
+                        if (f.IsConst) context.Writer.Write("const ");
+                        context.WriteTypeReference(f.Type);
+                        context.Writer.Write(' ');
+                        context.WriteIdentifier(f.Name);
+
+                        if (f.IsConst)
+                        {
+                            context.Writer.Write(" = ");
+                            context.WriteTargetTypedLiteral(f.Type, f.ConstantValue);
+                        }
+
+                        context.Writer.WriteLine(';');
+                        break;
+
+                    case IPropertySymbol p:
+                        // TODO: Unsafe
+                        context.WriteTypeReference(p.Type);
+                        context.Writer.Write(' ');
+
+                        if (p.IsIndexer)
+                        {
+                            context.Writer.Write("this[");
+                            WriteParameterListContents(p.Parameters, context);
+                            context.Writer.Write(']');
+                        }
+                        else
+                        {
+                            context.WriteIdentifier(p.Name);
+                        }
+
+                        context.Writer.Write(" { ");
+
+                        if (p.GetMethod is not null && MetadataFacts.IsVisibleOutsideAssembly(p.GetMethod))
+                        {
+                            if (p.GetMethod.DeclaredAccessibility != p.DeclaredAccessibility)
+                            {
+                                WriteAccessibility(p.GetMethod.DeclaredAccessibility, context.Writer);
+                                context.Writer.Write(' ');
+                            }
+
+                            context.Writer.Write("get; ");
+                        }
+
+                        if (p.SetMethod is not null && MetadataFacts.IsVisibleOutsideAssembly(p.SetMethod))
+                        {
+                            if (p.SetMethod.DeclaredAccessibility != p.DeclaredAccessibility)
+                            {
+                                WriteAccessibility(p.SetMethod.DeclaredAccessibility, context.Writer);
+                                context.Writer.Write(' ');
+                            }
+
+                            context.Writer.Write("set; ");
+                        }
+
+                        context.Writer.WriteLine('}');
+                        break;
+
                     default:
                         context.Writer.Write("// TODO: ");
                         context.Writer.Write(sortKind!.Value);
@@ -197,8 +273,8 @@ namespace GenerateRefAssemblySource
                 TypeKind.Class => "class ",
             });
 
-            context.Writer.Write(type.Name);
-            WriteGenericParameterList(type, context.Writer);
+            context.WriteIdentifier(type.Name);
+            WriteGenericParameterList(type, context);
         }
 
         private static void WriteBaseTypes(IReadOnlyCollection<INamedTypeSymbol> baseTypes, GenerationContext context)
@@ -235,9 +311,9 @@ namespace GenerateRefAssemblySource
             context.Writer.Write("delegate ");
             context.WriteTypeReference(type.DelegateInvokeMethod!.ReturnType);
             context.Writer.Write(' ');
-            context.Writer.Write(type.Name);
+            context.WriteIdentifier(type.Name);
 
-            WriteGenericParameterList(type, context.Writer);
+            WriteGenericParameterList(type, context);
             WriteParameterList(type.DelegateInvokeMethod, context);
             WriteGenericParameterConstraints(type.TypeParameters, context);
 
@@ -247,7 +323,7 @@ namespace GenerateRefAssemblySource
         private static void GenerateEnum(INamedTypeSymbol type, GenerationContext context)
         {
             context.Writer.Write("enum ");
-            context.Writer.Write(type.Name);
+            context.WriteIdentifier(type.Name);
 
             if (type.EnumUnderlyingType!.SpecialType != SpecialType.System_Int32)
             {
@@ -264,7 +340,7 @@ namespace GenerateRefAssemblySource
                 .OrderBy(f => f.ConstantValue)
                 .ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
             {
-                context.Writer.Write(field.Name);
+                context.WriteIdentifier(field.Name);
                 context.Writer.Write(" = ");
                 context.Writer.Write(field.ConstantValue);
                 context.Writer.WriteLine(',');
@@ -274,29 +350,29 @@ namespace GenerateRefAssemblySource
             context.Writer.WriteLine('}');
         }
 
-        private static void WriteGenericParameterList(INamedTypeSymbol type, TextWriter writer)
+        private static void WriteGenericParameterList(INamedTypeSymbol type, GenerationContext context)
         {
             if (!type.TypeParameters.Any()) return;
 
-            writer.Write('<');
+            context.Writer.Write('<');
 
             for (var i = 0; i < type.TypeParameters.Length; i++)
             {
-                if (i != 0) writer.Write(", ");
+                if (i != 0) context.Writer.Write(", ");
 
                 var genericParameter = type.TypeParameters[i];
 
-                writer.Write(genericParameter.Variance switch
+                context.Writer.Write(genericParameter.Variance switch
                 {
                     VarianceKind.In => "in ",
                     VarianceKind.Out => "out ",
                     _ => null,
                 });
 
-                writer.Write(genericParameter.Name);
+                context.WriteIdentifier(genericParameter.Name);
             }
 
-            writer.Write('>');
+            context.Writer.Write('>');
         }
 
         private static void WriteGenericParameterConstraints(ImmutableArray<ITypeParameterSymbol> typeParameters, GenerationContext context)
@@ -322,7 +398,7 @@ namespace GenerateRefAssemblySource
 
                 context.Writer.WriteLine();
                 context.Writer.Write("where ");
-                context.Writer.Write(typeParameter.Name);
+                context.WriteIdentifier(typeParameter.Name);
                 context.Writer.Write(" : ");
 
                 if (mutuallyExclusiveInitialConstraintKeyword is { })
@@ -349,18 +425,32 @@ namespace GenerateRefAssemblySource
         private static void WriteParameterList(IMethodSymbol method, GenerationContext context)
         {
             context.Writer.Write('(');
+            WriteParameterListContents(method.Parameters, context);
+            context.Writer.Write(')');
+        }
 
-            for (var i = 0; i < method.Parameters.Length; i++)
+        private static void WriteParameterListContents(ImmutableArray<IParameterSymbol> parameters, GenerationContext context)
+        {
+            for (var i = 0; i < parameters.Length; i++)
             {
                 if (i != 0) context.Writer.Write(", ");
-                var parameter = method.Parameters[i];
+                var parameter = parameters[i];
 
                 context.WriteTypeReference(parameter.Type);
                 context.Writer.Write(' ');
-                context.Writer.Write(parameter.Name);
-            }
+                context.WriteIdentifier(parameter.Name);
 
-            context.Writer.Write(')');
+                if (parameter.HasExplicitDefaultValue)
+                {
+                    if (!parameter.IsOptional) throw new NotImplementedException();
+                    context.Writer.Write(" = ");
+                    context.WriteTargetTypedLiteral(parameter.Type, parameter.ExplicitDefaultValue);
+                }
+                else if (parameter.IsOptional)
+                {
+                    context.Writer.Write("[System.Runtime.InteropServices.Optional] ");
+                }
+            }
         }
 
         private static void WriteAccessibility(Accessibility accessibility, TextWriter writer)
