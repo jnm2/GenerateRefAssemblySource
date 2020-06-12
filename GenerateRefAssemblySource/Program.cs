@@ -182,19 +182,20 @@ namespace GenerateRefAssemblySource
 
                 WriteAccessibility(member.DeclaredAccessibility, context.Writer);
 
-                if (member.IsStatic) context.Writer.Write("static ");
-                if (member.IsVirtual) context.Writer.Write("virtual ");
-                if (member.IsAbstract) context.Writer.Write("abstract ");
-                if (member.IsSealed) context.Writer.Write("sealed ");
-                if (member.IsOverride) context.Writer.Write("override ");
-
                 switch (member)
                 {
                     case IFieldSymbol f:
-                        // TODO: Unsafe
-                        if (f.IsVolatile) context.Writer.Write("volatile ");
-                        if (f.IsReadOnly) context.Writer.Write("readonly ");
-                        if (f.IsConst) context.Writer.Write("const ");
+                        if (f.IsConst)
+                        {
+                            context.Writer.Write("const ");
+                        }
+                        else
+                        {
+                            if (f.IsStatic) context.Writer.Write("static ");
+                            if (f.IsReadOnly) context.Writer.Write("readonly ");
+                            if (f.IsVolatile) context.Writer.Write("volatile ");
+                        }
+
                         context.WriteTypeReference(f.Type);
                         context.Writer.Write(' ');
                         context.WriteIdentifier(f.Name);
@@ -209,7 +210,12 @@ namespace GenerateRefAssemblySource
                         break;
 
                     case IPropertySymbol p:
-                        // TODO: Unsafe
+                        if (member.IsStatic) context.Writer.Write("static ");
+                        if (member.IsVirtual) context.Writer.Write("virtual ");
+                        if (member.IsAbstract) context.Writer.Write("abstract ");
+                        if (member.IsSealed) context.Writer.Write("sealed ");
+                        if (member.IsOverride) context.Writer.Write("override ");
+
                         context.WriteTypeReference(p.Type);
                         context.Writer.Write(' ');
 
