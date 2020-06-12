@@ -64,10 +64,19 @@ namespace GenerateRefAssemblySource
                     WriteTypeReference(named.ContainingType);
                     Writer.Write('.');
                 }
-                else if (!type.ContainingNamespace.IsGlobalNamespace && !IsInCurrentNamespace(named))
+                else if (!IsInCurrentNamespace(named))
                 {
-                    Writer.Write(type.ContainingNamespace.ToDisplayString());
-                    Writer.Write('.');
+                    if (type.ContainingNamespace.IsGlobalNamespace)
+                    {
+                        // This is unusual and really needs to stand out unambiguously from types that are in the
+                        // current namespace.
+                        Writer.Write("global::");
+                    }
+                    else
+                    {
+                        Writer.Write(type.ContainingNamespace.ToDisplayString());
+                        Writer.Write('.');
+                    }
                 }
 
                 Writer.Write(named.Name);
