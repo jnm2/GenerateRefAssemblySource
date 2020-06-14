@@ -1,7 +1,6 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using System;
-using System.CodeDom.Compiler;
 using System.Linq;
 
 namespace GenerateRefAssemblySource
