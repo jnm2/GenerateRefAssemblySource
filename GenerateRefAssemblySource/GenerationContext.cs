@@ -7,14 +7,21 @@ namespace GenerateRefAssemblySource
 {
     internal readonly struct GenerationContext
     {
-        public GenerationContext(IndentedTextWriter writer, INamespaceSymbol currentNamespace)
+        public GenerationContext(IndentedTextWriter writer, INamespaceSymbol currentNamespace, bool isDefiningPrimitiveTypeConstant = false)
         {
             Writer = writer ?? throw new ArgumentNullException(nameof(writer));
             CurrentNamespace = currentNamespace;
+            IsDefiningPrimitiveTypeConstant = isDefiningPrimitiveTypeConstant;
         }
 
         public IndentedTextWriter Writer { get; }
         public INamespaceSymbol CurrentNamespace { get; }
+        public bool IsDefiningPrimitiveTypeConstant { get; }
+
+        public GenerationContext WithIsDefiningPrimitiveTypeConstant(bool isDefiningPrimitiveTypeConstant)
+        {
+            return new GenerationContext(Writer, CurrentNamespace, isDefiningPrimitiveTypeConstant);
+        }
 
         public bool IsInCurrentNamespace(INamedTypeSymbol type)
         {
@@ -218,38 +225,73 @@ namespace GenerateRefAssemblySource
 
         public void WriteLiteral(int value)
         {
-            if (value == int.MaxValue)
-                Writer.Write("int.MaxValue");
-            else if (value == int.MinValue)
-                Writer.Write("int.MinValue");
-            else
-                SyntaxFactory.Literal(value).WriteTo(Writer);
+            if (!IsDefiningPrimitiveTypeConstant)
+            {
+                if (value == int.MaxValue)
+                {
+                    Writer.Write("int.MaxValue");
+                    return;
+                }
+                if (value == int.MinValue)
+                {
+                    Writer.Write("int.MinValue");
+                    return;
+                }
+            }
+
+            SyntaxFactory.Literal(value).WriteTo(Writer);
         }
 
         public void WriteLiteral(uint value)
         {
-            if (value == uint.MaxValue)
-                Writer.Write("int.MaxValue");
-            else
-                SyntaxFactory.Literal(value).WriteTo(Writer);
+            if (!IsDefiningPrimitiveTypeConstant)
+            {
+                if (value == uint.MaxValue)
+                {
+                    Writer.Write("uint.MaxValue");
+                    return;
+                }
+            }
+
+            SyntaxFactory.Literal(value).WriteTo(Writer);
         }
 
         public void WriteLiteral(long value)
         {
-            if (value == long.MaxValue)
-                Writer.Write("long.MaxValue");
-            else if (value == long.MinValue)
-                Writer.Write("long.MinValue");
-            else
-                SyntaxFactory.Literal(value).WriteTo(Writer);
+            if (!IsDefiningPrimitiveTypeConstant)
+            {
+                if (value == long.MaxValue)
+                {
+                    Writer.Write("long.MaxValue");
+                    return;
+                }
+                if (value == long.MinValue)
+                {
+                    Writer.Write("long.MinValue");
+                    return;
+                }
+            }
+
+            SyntaxFactory.Literal(value).WriteTo(Writer);
         }
 
         public void WriteLiteral(ulong value)
         {
-            if (value == ulong.MaxValue)
-                Writer.Write("long.MaxValue");
-            else
-                SyntaxFactory.Literal(value).WriteTo(Writer);
+            if (!IsDefiningPrimitiveTypeConstant)
+            {
+                if (value == ulong.MaxValue)
+                {
+                    Writer.Write("ulong.MaxValue");
+                    return;
+                }
+                if (value == ulong.MinValue)
+                {
+                    Writer.Write("ulong.MinValue");
+                    return;
+                }
+            }
+
+            SyntaxFactory.Literal(value).WriteTo(Writer);
         }
 
         public void WriteLiteral(byte value)
@@ -277,32 +319,40 @@ namespace GenerateRefAssemblySource
             if (double.IsInfinity(value))
             {
                 if (double.IsPositiveInfinity(value))
-                    Writer.Write("double.PositiveInfinity");
+                    Writer.Write(IsDefiningPrimitiveTypeConstant ? "1d / 0d" : "double.PositiveInfinity");
                 else if (double.IsNegativeInfinity(value))
-                    Writer.Write("double.NegativeInfinity");
+                    Writer.Write(IsDefiningPrimitiveTypeConstant ? "-1d / 0d" : "double.NegativeInfinity");
                 else
                     throw new NotImplementedException();
+                return;
             }
-            else if (double.IsNaN(value))
+
+            if (double.IsNaN(value))
             {
-                Writer.Write("double.NaN");
+                Writer.Write(IsDefiningPrimitiveTypeConstant ? "-0d / 0d" : "double.NaN");
+                return;
             }
-            else if (value == double.MaxValue)
+
+            if (!IsDefiningPrimitiveTypeConstant)
             {
-                Writer.Write("double.MaxValue");
+                if (value == double.MaxValue)
+                {
+                    Writer.Write("double.MaxValue");
+                    return;
+                }
+                if (value == double.MinValue)
+                {
+                    Writer.Write("double.MinValue");
+                    return;
+                }
+                if (value == double.Epsilon)
+                {
+                    Writer.Write("double.Epsilon");
+                    return;
+                }
             }
-            else if (value == double.MinValue)
-            {
-                Writer.Write("double.MinValue");
-            }
-            else if (value == double.Epsilon)
-            {
-                Writer.Write("double.Epsilon");
-            }
-            else
-            {
-                SyntaxFactory.Literal(value).WriteTo(Writer);
-            }
+
+            SyntaxFactory.Literal(value).WriteTo(Writer);
         }
 
         public void WriteLiteral(float value)
@@ -310,42 +360,59 @@ namespace GenerateRefAssemblySource
             if (float.IsInfinity(value))
             {
                 if (float.IsPositiveInfinity(value))
-                    Writer.Write("float.PositiveInfinity");
+                    Writer.Write(IsDefiningPrimitiveTypeConstant ? "1f / 0f" : "float.PositiveInfinity");
                 else if (float.IsNegativeInfinity(value))
-                    Writer.Write("float.NegativeInfinity");
+                    Writer.Write(IsDefiningPrimitiveTypeConstant ? "-1f / 0f" : "float.NegativeInfinity");
                 else
                     throw new NotImplementedException();
+                return;
             }
-            else if (float.IsNaN(value))
+
+            if (float.IsNaN(value))
             {
-                Writer.Write("float.NaN");
+                Writer.Write(IsDefiningPrimitiveTypeConstant ? "-0f / 0f" : "float.NaN");
+                return;
             }
-            else if (value == float.MaxValue)
+
+            if (!IsDefiningPrimitiveTypeConstant)
             {
-                Writer.Write("float.MaxValue");
+                if (value == float.MaxValue)
+                {
+                    Writer.Write("float.MaxValue");
+                    return;
+                }
+                if (value == float.MinValue)
+                {
+                    Writer.Write("float.MinValue");
+                    return;
+                }
+                if (value == float.Epsilon)
+                {
+                    Writer.Write("float.Epsilon");
+                    return;
+                }
             }
-            else if (value == float.MinValue)
-            {
-                Writer.Write("float.MinValue");
-            }
-            else if (value == float.Epsilon)
-            {
-                Writer.Write("float.Epsilon");
-            }
-            else
-            {
-                SyntaxFactory.Literal(value).WriteTo(Writer);
-            }
+
+            SyntaxFactory.Literal(value).WriteTo(Writer);
         }
 
         public void WriteLiteral(decimal value)
         {
-            if (value == decimal.MaxValue)
-                Writer.Write("decimal.MaxValue");
-            else if (value == decimal.MinValue)
-                Writer.Write("decimal.MinValue");
-            else
-                SyntaxFactory.Literal(value).WriteTo(Writer);
+            if (!IsDefiningPrimitiveTypeConstant)
+            {
+                if (value == decimal.MaxValue)
+                {
+                    Writer.Write("decimal.MaxValue");
+                    return;
+                }
+                if (value == decimal.MinValue)
+                {
+                    Writer.Write("decimal.MinValue");
+                    return;
+                }
+            }
+
+            SyntaxFactory.Literal(value).WriteTo(Writer);
         }
 
         public void WriteLiteral(char value)

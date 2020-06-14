@@ -196,7 +196,9 @@ namespace GenerateRefAssemblySource
                         if (f.IsConst)
                         {
                             context.Writer.Write(" = ");
-                            context.WriteLiteral(f.Type, f.ConstantValue);
+                            context
+                                .WithIsDefiningPrimitiveTypeConstant(MetadataFacts.IsPrimitiveType(type))
+                                .WriteLiteral(f.Type, f.ConstantValue);
                         }
 
                         context.Writer.WriteLine(';');
