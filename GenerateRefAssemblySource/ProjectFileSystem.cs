@@ -3,7 +3,7 @@ using System.IO;
 
 namespace GenerateRefAssemblySource
 {
-    internal sealed class ProjectFileSystem : IProjectFileSystem
+    public sealed class ProjectFileSystem : IProjectFileSystem
     {
         private readonly string baseDirectory;
 

@@ -2,7 +2,7 @@
 
 namespace GenerateRefAssemblySource
 {
-    internal interface IProjectFileSystem
+    public interface IProjectFileSystem
     {
         TextWriter Create(string relativePath);
     }
