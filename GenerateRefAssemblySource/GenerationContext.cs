@@ -99,7 +99,7 @@ namespace GenerateRefAssemblySource
 
                 WriteIdentifier(type.Name);
 
-                if (named.IsGenericType)
+                if (named.TypeArguments.Any())
                 {
                     Writer.Write('<');
 
