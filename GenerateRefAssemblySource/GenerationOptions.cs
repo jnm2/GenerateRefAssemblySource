@@ -22,7 +22,6 @@ namespace GenerateRefAssemblySource
         }
 
         public GeneratedBodyOptions BodyOptions { get; }
-
         public ImmutableArray<TypeMemberSortKind> TypeMemberOrder { get; }
     }
 }

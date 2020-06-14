@@ -135,7 +135,17 @@ namespace GenerateRefAssemblySource
             var isFirst = true;
 
             foreach (var (member, sortKind) in type.GetMembers()
-                .Where(MetadataFacts.IsVisibleOutsideAssembly)
+                .Where(m =>
+                {
+                    if (!MetadataFacts.IsVisibleOutsideAssembly(m)) return false;
+
+                    var isStructDefaultConstructor = type.TypeKind == TypeKind.Struct && m is IMethodSymbol { MethodKind: MethodKind.Constructor, Parameters: { IsEmpty: true } };
+
+                    if (m.IsImplicitlyDeclared != isStructDefaultConstructor)
+                        throw new NotImplementedException("Explicitly declared struct constructor or other kind of implicitly declared member");
+
+                    return !isStructDefaultConstructor;
+                })
                 .Select(m => (Member: m, SortKind: MetadataFacts.GetTypeMemberSortKind(m)))
                 .Where(m => m.SortKind is not null)
                 .OrderBy(m => options.TypeMemberOrder.IndexOf(m.SortKind!.Value))
