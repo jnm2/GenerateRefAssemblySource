@@ -377,7 +377,8 @@ namespace GenerateRefAssemblySource
         private static void WriteBaseTypes(IReadOnlyCollection<INamedTypeSymbol> baseTypes, GenerationContext context)
         {
             using var enumerator = baseTypes
-                .OrderByDescending(context.IsInCurrentNamespace)
+                .OrderByDescending(t => t.TypeKind == TypeKind.Class)
+                .ThenByDescending(context.IsInCurrentNamespace)
                 .ThenBy(t => t, NamespaceOrTypeFullNameComparer.Instance)
                 .GetEnumerator();
 
