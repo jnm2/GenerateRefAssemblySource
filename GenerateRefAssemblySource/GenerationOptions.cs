@@ -15,13 +15,26 @@ namespace GenerateRefAssemblySource
             TypeMemberSortKind.Operator,
             TypeMemberSortKind.Conversion);
 
-        public GenerationOptions(GeneratedBodyOptions bodyOptions, ImmutableArray<TypeMemberSortKind>? typeMemberOrder = null)
+        public static GenerationOptions MinimalPseudocode { get; } = new GenerationOptions(
+            GeneratedBodyOptions.MinimalPseudocode,
+            generateRequiredBaseConstructorCalls: false);
+
+        public static GenerationOptions RefAssembly { get; } = new GenerationOptions(
+            GeneratedBodyOptions.RefAssembly,
+            generateRequiredBaseConstructorCalls: true);
+
+        public GenerationOptions(
+            GeneratedBodyOptions bodyOptions,
+            ImmutableArray<TypeMemberSortKind>? typeMemberOrder = null,
+            bool generateRequiredBaseConstructorCalls = false)
         {
             BodyOptions = bodyOptions;
             TypeMemberOrder = typeMemberOrder ?? DefaultTypeMemberOrder;
+            GenerateRequiredBaseConstructorCalls = generateRequiredBaseConstructorCalls;
         }
 
         public GeneratedBodyOptions BodyOptions { get; }
         public ImmutableArray<TypeMemberSortKind> TypeMemberOrder { get; }
+        public bool GenerateRequiredBaseConstructorCalls { get; }
     }
 }

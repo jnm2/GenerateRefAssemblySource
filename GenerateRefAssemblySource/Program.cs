@@ -14,7 +14,7 @@ namespace GenerateRefAssemblySource
             var sourceFolder = args.Single();
             var outputDirectory = Directory.GetCurrentDirectory();
 
-            var generator = new SourceGenerator(new GenerationOptions(GeneratedBodyOptions.RefAssembly));
+            var generator = new SourceGenerator(GenerationOptions.RefAssembly);
 
             var dllFilePaths = Directory.GetFiles(sourceFolder, "*.dll");
 

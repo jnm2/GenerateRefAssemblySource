@@ -2,7 +2,7 @@
 {
     public sealed class GeneratedBodyOptions
     {
-        public static GeneratedBodyOptions AlwaysNone { get; } = new GeneratedBodyOptions(
+        public static GeneratedBodyOptions MinimalPseudocode { get; } = new GeneratedBodyOptions(
             requiredBodyWithVoidReturn: GeneratedBodyType.None,
             requiredBodyWithNonVoidReturn: GeneratedBodyType.None,
             useAutoProperties: true,

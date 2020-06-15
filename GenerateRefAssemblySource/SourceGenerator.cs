@@ -330,6 +330,40 @@ namespace GenerateRefAssemblySource
                         WriteGenericParameterList(m.TypeParameters, context);
                         WriteParameterList(m, context);
                         WriteGenericParameterConstraints(m.TypeParameters, context);
+
+                        if (options.GenerateRequiredBaseConstructorCalls
+                            && m.MethodKind == MethodKind.Constructor
+                            && type.BaseType is INamedTypeSymbol baseType
+                            && baseType.InstanceConstructors.Any()
+                            && !baseType.InstanceConstructors.Any(c => c.Parameters.IsEmpty))
+                        {
+                            context.Writer.WriteLine();
+                            context.Writer.Indent++;
+
+                            context.Writer.Write(": base(");
+
+                            var minParameterCount = baseType.InstanceConstructors.Min(c => c.Parameters.Length);
+                            var baseCtors = baseType.InstanceConstructors.Where(c => c.Parameters.Length == minParameterCount).ToList();
+                            var baseCtor = baseCtors.First();
+                            var specifyTypes = baseCtors.Count > 1;
+
+                            for (var i = 0; i < baseCtor.Parameters.Length; i++)
+                            {
+                                if (i != 0) context.Writer.Write(", ");
+                                context.Writer.Write("default");
+
+                                if (specifyTypes)
+                                {
+                                    context.Writer.Write('(');
+                                    context.WriteTypeReference(baseCtor.Parameters[i].Type);
+                                    context.Writer.Write(')');
+                                }
+                            }
+
+                            context.Writer.Write(')');
+                            context.Writer.Indent--;
+                        }
+
                         WriteBody(context, GetBodyType(m));
                         context.Writer.WriteLine();
                         break;
