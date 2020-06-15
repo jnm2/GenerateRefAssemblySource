@@ -205,5 +205,17 @@ namespace GenerateRefAssemblySource
                     return false;
             }
         }
+
+        public static ISymbol? GetOverriddenMember(ISymbol overridingMember)
+        {
+            return overridingMember switch
+            {
+                IMethodSymbol m => m.OverriddenMethod,
+                IPropertySymbol p => p.OverriddenProperty,
+                IEventSymbol e => e.OverriddenEvent,
+                { IsOverride: true } => throw new NotImplementedException("Member is an override but is not a method, property, or event"),
+                _ => null,
+            };
+        }
     }
 }

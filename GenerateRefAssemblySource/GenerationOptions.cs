@@ -17,24 +17,29 @@ namespace GenerateRefAssemblySource
 
         public static GenerationOptions MinimalPseudocode { get; } = new GenerationOptions(
             GeneratedBodyOptions.MinimalPseudocode,
-            generateRequiredBaseConstructorCalls: false);
+            generateRequiredBaseConstructorCalls: false,
+            generateRequiredProtectedOverridesInSealedClasses: false);
 
         public static GenerationOptions RefAssembly { get; } = new GenerationOptions(
             GeneratedBodyOptions.RefAssembly,
-            generateRequiredBaseConstructorCalls: true);
+            generateRequiredBaseConstructorCalls: true,
+            generateRequiredProtectedOverridesInSealedClasses: true);
 
         public GenerationOptions(
             GeneratedBodyOptions bodyOptions,
             ImmutableArray<TypeMemberSortKind>? typeMemberOrder = null,
-            bool generateRequiredBaseConstructorCalls = false)
+            bool generateRequiredBaseConstructorCalls = false,
+            bool generateRequiredProtectedOverridesInSealedClasses = false)
         {
             BodyOptions = bodyOptions;
             TypeMemberOrder = typeMemberOrder ?? DefaultTypeMemberOrder;
             GenerateRequiredBaseConstructorCalls = generateRequiredBaseConstructorCalls;
+            GenerateRequiredProtectedOverridesInSealedClasses = generateRequiredProtectedOverridesInSealedClasses;
         }
 
         public GeneratedBodyOptions BodyOptions { get; }
         public ImmutableArray<TypeMemberSortKind> TypeMemberOrder { get; }
         public bool GenerateRequiredBaseConstructorCalls { get; }
+        public bool GenerateRequiredProtectedOverridesInSealedClasses { get; }
     }
 }

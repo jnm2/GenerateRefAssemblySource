@@ -154,7 +154,15 @@ namespace GenerateRefAssemblySource
             foreach (var (member, sortKind) in type.GetMembers()
                 .Where(m =>
                 {
-                    if (!MetadataFacts.IsVisibleOutsideAssembly(m)) return false;
+                    if (!MetadataFacts.IsVisibleOutsideAssembly(m))
+                    {
+                        var isOverrideRequired =
+                            options.GenerateRequiredProtectedOverridesInSealedClasses
+                            && MetadataFacts.GetOverriddenMember(m) is { IsAbstract: true } overridden
+                            && MetadataFacts.IsVisibleOutsideAssembly(overridden);
+
+                        if (!isOverrideRequired) return false;
+                    }
 
                     var isStructDefaultConstructor = type.TypeKind == TypeKind.Struct && m is IMethodSymbol { MethodKind: MethodKind.Constructor, Parameters: { IsEmpty: true } };
 
