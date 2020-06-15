@@ -1,0 +1,4 @@
+﻿Generate project references
+Add attributes, incl. assembly attributes
+Actually follow https://github.com/dotnet/roslyn/blob/master/docs/features/refout.md
+Perf
