@@ -220,7 +220,8 @@ namespace GenerateRefAssemblySource
 
         public static bool HidesBaseMember(ISymbol member)
         {
-            if (!member.CanBeReferencedByName || member.IsOverride) return false;
+            if (member.IsImplicitlyDeclared || member.IsOverride) return false;
+            if (member is IMethodSymbol { MethodKind: MethodKind.Constructor or MethodKind.StaticConstructor or MethodKind.Destructor }) return false;
 
             var baseTypes = member.ContainingType.TypeKind == TypeKind.Interface
                 ? member.ContainingType.AllInterfaces

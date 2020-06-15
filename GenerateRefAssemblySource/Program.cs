@@ -26,6 +26,20 @@ namespace GenerateRefAssemblySource
 
             var projectsByAssemblyName = new Dictionary<string, (Guid Id, string FullPath)>();
 
+            File.WriteAllText(
+                Path.Join(outputDirectory, "Directory.Build.props"),
+@"<Project>
+
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+    <NoStdLib>true</NoStdLib>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+</Project>
+");
+
             foreach (var reference in compilation.References)
             {
                 var assembly = (IAssemblySymbol?)compilation.GetAssemblyOrModuleSymbol(reference);
@@ -40,10 +54,6 @@ namespace GenerateRefAssemblySource
 
   <PropertyGroup>
     <TargetFramework>net35</TargetFramework>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
-    <NoStdLib>true</NoStdLib>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
   </PropertyGroup>
 
 </Project>
