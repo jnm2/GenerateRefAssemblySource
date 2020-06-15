@@ -9,7 +9,7 @@
             useFieldLikeEvents: true);
 
         public static GeneratedBodyOptions RefAssembly { get; } = new GeneratedBodyOptions(
-            requiredBodyWithVoidReturn: GeneratedBodyType.Empty,
+            requiredBodyWithVoidReturn: GeneratedBodyType.ThrowNull,
             requiredBodyWithNonVoidReturn: GeneratedBodyType.ThrowNull,
             useAutoProperties: false,
             useFieldLikeEvents: false);
