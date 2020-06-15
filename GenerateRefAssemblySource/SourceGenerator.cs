@@ -186,6 +186,7 @@ namespace GenerateRefAssemblySource
                         {
                             if (f.IsStatic) context.Writer.Write("static ");
                             if (f.IsReadOnly) context.Writer.Write("readonly ");
+                            if (f.Type.TypeKind == TypeKind.Pointer) context.Writer.Write("unsafe ");
                             if (f.IsVolatile) context.Writer.Write("volatile ");
                         }
 
@@ -228,6 +229,8 @@ namespace GenerateRefAssemblySource
                         break;
 
                     case IPropertySymbol p:
+                        if (p.Type.TypeKind == TypeKind.Pointer) context.Writer.Write("unsafe ");
+
                         context.WriteTypeReference(p.Type);
                         context.Writer.Write(' ');
 
@@ -285,6 +288,9 @@ namespace GenerateRefAssemblySource
                         break;
 
                     case IMethodSymbol m:
+                        if (m.ReturnType.TypeKind == TypeKind.Pointer || m.Parameters.Any(p => p.Type.TypeKind == TypeKind.Pointer))
+                            context.Writer.Write("unsafe ");
+
                         if (m.MethodKind == MethodKind.Conversion)
                         {
                             context.Writer.Write(m.Name switch
@@ -399,13 +405,18 @@ namespace GenerateRefAssemblySource
 
         private static void GenerateDelegate(INamedTypeSymbol type, GenerationContext context)
         {
+            var invokeMethod = type.DelegateInvokeMethod!;
+
+            if (invokeMethod.ReturnType.TypeKind == TypeKind.Pointer || invokeMethod.Parameters.Any(p => p.Type.TypeKind == TypeKind.Pointer))
+                context.Writer.Write("unsafe ");
+
             context.Writer.Write("delegate ");
-            context.WriteTypeReference(type.DelegateInvokeMethod!.ReturnType);
+            context.WriteTypeReference(invokeMethod.ReturnType);
             context.Writer.Write(' ');
             context.WriteIdentifier(type.Name);
 
             WriteGenericParameterList(type.TypeParameters, context);
-            WriteParameterList(type.DelegateInvokeMethod, context);
+            WriteParameterList(invokeMethod, context);
             WriteGenericParameterConstraints(type.TypeParameters, context);
 
             context.Writer.WriteLine(';');

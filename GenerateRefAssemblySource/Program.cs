@@ -40,6 +40,7 @@ namespace GenerateRefAssemblySource
 
   <PropertyGroup>
     <TargetFramework>net35</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
     <NoStdLib>true</NoStdLib>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
