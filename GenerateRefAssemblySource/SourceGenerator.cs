@@ -132,6 +132,23 @@ namespace GenerateRefAssemblySource
 
         private void WriteTypeMembers(INamedTypeSymbol type, GenerationContext context)
         {
+            var baseConstructorToCall = ((IMethodSymbol Constructor, bool SpecifyParameterTypes)?)null;
+
+            if (options.GenerateRequiredBaseConstructorCalls
+                && type.BaseType is INamedTypeSymbol baseType
+                && baseType.InstanceConstructors.Any()
+                && !baseType.InstanceConstructors.Any(c => c.Parameters.IsEmpty))
+            {
+                var minParameterCount = baseType.InstanceConstructors.Min(c => c.Parameters.Length);
+                var ctorsWithMinParameterCount = baseType.InstanceConstructors.Where(c => c.Parameters.Length == minParameterCount).ToList();
+
+                baseConstructorToCall = (
+                    Constructor: ctorsWithMinParameterCount.First(),
+                    SpecifyParameterTypes: ctorsWithMinParameterCount.Count > 1);
+            }
+
+            var baseConstructorCallWasGenerated = false;
+
             var isFirst = true;
 
             foreach (var (member, sortKind) in type.GetMembers()
@@ -331,37 +348,10 @@ namespace GenerateRefAssemblySource
                         WriteParameterList(m, context);
                         WriteGenericParameterConstraints(m.TypeParameters, context);
 
-                        if (options.GenerateRequiredBaseConstructorCalls
-                            && m.MethodKind == MethodKind.Constructor
-                            && type.BaseType is INamedTypeSymbol baseType
-                            && baseType.InstanceConstructors.Any()
-                            && !baseType.InstanceConstructors.Any(c => c.Parameters.IsEmpty))
+                        if (m.MethodKind == MethodKind.Constructor && baseConstructorToCall is var (baseConstructor, specifyParameterTypes))
                         {
-                            context.Writer.WriteLine();
-                            context.Writer.Indent++;
-
-                            context.Writer.Write(": base(");
-
-                            var minParameterCount = baseType.InstanceConstructors.Min(c => c.Parameters.Length);
-                            var baseCtors = baseType.InstanceConstructors.Where(c => c.Parameters.Length == minParameterCount).ToList();
-                            var baseCtor = baseCtors.First();
-                            var specifyTypes = baseCtors.Count > 1;
-
-                            for (var i = 0; i < baseCtor.Parameters.Length; i++)
-                            {
-                                if (i != 0) context.Writer.Write(", ");
-                                context.Writer.Write("default");
-
-                                if (specifyTypes)
-                                {
-                                    context.Writer.Write('(');
-                                    context.WriteTypeReference(baseCtor.Parameters[i].Type);
-                                    context.Writer.Write(')');
-                                }
-                            }
-
-                            context.Writer.Write(')');
-                            context.Writer.Indent--;
+                            GenerateBaseConstructorCall(baseConstructor, specifyParameterTypes, context);
+                            baseConstructorCallWasGenerated = true;
                         }
 
                         WriteBody(context, GetBodyType(m));
@@ -372,6 +362,45 @@ namespace GenerateRefAssemblySource
                         throw new NotImplementedException();
                 }
             }
+
+            if (!baseConstructorCallWasGenerated)
+            {
+                if (baseConstructorToCall is var (baseConstructor, specifyParameterTypes))
+                {
+                    if (!isFirst) context.Writer.WriteLine();
+
+                    context.Writer.Write("internal ");
+                    context.WriteIdentifier(type.Name);
+                    context.Writer.Write("()");
+                    GenerateBaseConstructorCall(baseConstructor, specifyParameterTypes, context);
+                    WriteBody(context, options.BodyOptions.RequiredBodyWithVoidReturn);
+                    context.Writer.WriteLine();
+                }
+            }
+        }
+
+        private void GenerateBaseConstructorCall(IMethodSymbol baseConstructor, bool specifyParameterTypes, GenerationContext context)
+        {
+            context.Writer.WriteLine();
+            context.Writer.Indent++;
+
+            context.Writer.Write(": base(");
+
+            for (var i = 0; i < baseConstructor.Parameters.Length; i++)
+            {
+                if (i != 0) context.Writer.Write(", ");
+                context.Writer.Write("default");
+
+                if (specifyParameterTypes)
+                {
+                    context.Writer.Write('(');
+                    context.WriteTypeReference(baseConstructor.Parameters[i].Type);
+                    context.Writer.Write(')');
+                }
+            }
+
+            context.Writer.Write(')');
+            context.Writer.Indent--;
         }
 
         private GeneratedBodyType GetBodyType(IMethodSymbol method)
