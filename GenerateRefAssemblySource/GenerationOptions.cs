@@ -18,28 +18,33 @@ namespace GenerateRefAssemblySource
         public static GenerationOptions MinimalPseudocode { get; } = new GenerationOptions(
             GeneratedBodyOptions.MinimalPseudocode,
             generateRequiredBaseConstructorCalls: false,
-            generateRequiredProtectedOverridesInSealedClasses: false);
+            generateRequiredProtectedOverridesInSealedClasses: false,
+            generateRequiredExplicitInterfaceImplementations: false);
 
         public static GenerationOptions RefAssembly { get; } = new GenerationOptions(
             GeneratedBodyOptions.RefAssembly,
             generateRequiredBaseConstructorCalls: true,
-            generateRequiredProtectedOverridesInSealedClasses: true);
+            generateRequiredProtectedOverridesInSealedClasses: true,
+            generateRequiredExplicitInterfaceImplementations: true);
 
         public GenerationOptions(
             GeneratedBodyOptions bodyOptions,
             ImmutableArray<TypeMemberSortKind>? typeMemberOrder = null,
             bool generateRequiredBaseConstructorCalls = false,
-            bool generateRequiredProtectedOverridesInSealedClasses = false)
+            bool generateRequiredProtectedOverridesInSealedClasses = false,
+            bool generateRequiredExplicitInterfaceImplementations = false)
         {
             BodyOptions = bodyOptions;
             TypeMemberOrder = typeMemberOrder ?? DefaultTypeMemberOrder;
             GenerateRequiredBaseConstructorCalls = generateRequiredBaseConstructorCalls;
             GenerateRequiredProtectedOverridesInSealedClasses = generateRequiredProtectedOverridesInSealedClasses;
+            GenerateRequiredExplicitInterfaceImplementations = generateRequiredExplicitInterfaceImplementations;
         }
 
         public GeneratedBodyOptions BodyOptions { get; }
         public ImmutableArray<TypeMemberSortKind> TypeMemberOrder { get; }
         public bool GenerateRequiredBaseConstructorCalls { get; }
         public bool GenerateRequiredProtectedOverridesInSealedClasses { get; }
+        public bool GenerateRequiredExplicitInterfaceImplementations { get; }
     }
 }

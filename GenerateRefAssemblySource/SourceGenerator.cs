@@ -130,6 +130,19 @@ namespace GenerateRefAssemblySource
             }
         }
 
+        private IEnumerable<ISymbol> FilterAndSortTypeMembers(IEnumerable<ISymbol> typeMembers)
+        {
+            return typeMembers
+                .Select(m => (Member: m, SortKind: MetadataFacts.GetTypeMemberSortKind(m)))
+                .Where(m => m.SortKind is not null)
+                .OrderBy(m => options.TypeMemberOrder.IndexOf(m.SortKind!.Value))
+                .ThenByDescending(m => m.Member.DeclaredAccessibility == Accessibility.Public)
+                .ThenByDescending(m => m.Member.IsStatic)
+                .ThenByDescending(m => (m.Member as IFieldSymbol)?.IsReadOnly)
+                .ThenBy(m => m.Member.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(m => m.Member);
+        }
+
         private void WriteTypeMembers(INamedTypeSymbol type, GenerationContext context)
         {
             var baseConstructorToCall = ((IMethodSymbol Constructor, bool SpecifyParameterTypes)?)null;
@@ -151,8 +164,10 @@ namespace GenerateRefAssemblySource
 
             var isFirst = true;
 
-            foreach (var (member, sortKind) in type.GetMembers()
-                .Where(m =>
+            var generatedMembers = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+
+            foreach (var member in FilterAndSortTypeMembers(
+                type.GetMembers().Where(m =>
                 {
                     if (!MetadataFacts.IsVisibleOutsideAssembly(m))
                     {
@@ -170,15 +185,10 @@ namespace GenerateRefAssemblySource
                         throw new NotImplementedException("Explicitly declared struct constructor or other kind of implicitly declared member");
 
                     return !isStructDefaultConstructor;
-                })
-                .Select(m => (Member: m, SortKind: MetadataFacts.GetTypeMemberSortKind(m)))
-                .Where(m => m.SortKind is not null)
-                .OrderBy(m => options.TypeMemberOrder.IndexOf(m.SortKind!.Value))
-                .ThenByDescending(m => m.Member.DeclaredAccessibility == Accessibility.Public)
-                .ThenByDescending(m => m.Member.IsStatic)
-                .ThenByDescending(m => (m.Member as IFieldSymbol)?.IsReadOnly)
-                .ThenBy(m => m.Member.Name, StringComparer.OrdinalIgnoreCase))
+                })))
             {
+                generatedMembers.Add(member);
+
                 if (isFirst) isFirst = false; else context.Writer.WriteLine();
 
                 if (member is IPropertySymbol { IsIndexer: true, MetadataName: not "Item" and var indexerName })
@@ -203,158 +213,19 @@ namespace GenerateRefAssemblySource
                 switch (member)
                 {
                     case IFieldSymbol f:
-                        if (f.IsConst)
-                        {
-                            context.Writer.Write("const ");
-                        }
-                        else
-                        {
-                            if (f.IsStatic) context.Writer.Write("static ");
-                            if (f.IsReadOnly) context.Writer.Write("readonly ");
-                            if (f.Type.TypeKind == TypeKind.Pointer) context.Writer.Write("unsafe ");
-                            if (f.IsVolatile) context.Writer.Write("volatile ");
-                        }
-
-                        context.WriteTypeReference(f.Type);
-                        context.Writer.Write(' ');
-                        context.WriteIdentifier(f.Name);
-
-                        if (f.IsConst)
-                        {
-                            context.Writer.Write(" = ");
-                            context
-                                .WithIsDefiningPrimitiveTypeConstant(MetadataFacts.IsPrimitiveType(type))
-                                .WriteLiteral(f.Type, f.ConstantValue);
-                        }
-
-                        context.Writer.WriteLine(';');
+                        GenerateField(f, context);
                         break;
 
                     case IEventSymbol e:
-                        if (e.RaiseMethod is { })
-                            throw new NotImplementedException("Raise accessor");
-
-                        context.Writer.Write("event ");
-                        context.WriteTypeReference(e.Type);
-                        context.Writer.Write(' ');
-                        context.WriteIdentifier(e.Name);
-
-                        if (e.IsAbstract || options.BodyOptions.UseFieldLikeEvents)
-                        {
-                            context.Writer.WriteLine(';');
-                        }
-                        else
-                        {
-                            context.Writer.Write(" { add");
-                            WriteBody(context, GetBodyType(e.AddMethod!));
-                            context.Writer.Write(" remove");
-                            WriteBody(context, GetBodyType(e.RemoveMethod!));
-                            context.Writer.WriteLine(" }");
-                        }
+                        GenerateEvent(e, asExplicitImplementation: false, context);
                         break;
 
                     case IPropertySymbol p:
-                        if (p.Type.TypeKind == TypeKind.Pointer) context.Writer.Write("unsafe ");
-
-                        context.WriteTypeReference(p.Type);
-                        context.Writer.Write(' ');
-
-                        if (p.IsIndexer)
-                        {
-                            context.Writer.Write("this[");
-                            WriteParameterListContents(p.Parameters, context);
-                            context.Writer.Write(']');
-                        }
-                        else
-                        {
-                            context.WriteIdentifier(p.Name);
-                        }
-
-                        if (options.BodyOptions.UseExpressionBodiedPropertiesWhenThrowingNull
-                            && p is { GetMethod: not null, SetMethod: null }
-                            && GetBodyType(p.GetMethod) == GeneratedBodyType.ThrowNull)
-                        {
-                            WriteBody(context, GeneratedBodyType.ThrowNull);
-                        }
-                        else
-                        {
-                            context.Writer.Write(" { ");
-
-                            if (p.GetMethod is not null && MetadataFacts.IsVisibleOutsideAssembly(p.GetMethod))
-                            {
-                                if (p.GetMethod.DeclaredAccessibility != p.DeclaredAccessibility)
-                                {
-                                    WriteAccessibility(p.GetMethod.DeclaredAccessibility, context.Writer);
-                                    context.Writer.Write(' ');
-                                }
-
-                                context.Writer.Write("get");
-                                WriteBody(context, GetBodyType(p.GetMethod));
-                                context.Writer.Write(' ');
-                            }
-
-                            if (p.SetMethod is not null && MetadataFacts.IsVisibleOutsideAssembly(p.SetMethod))
-                            {
-                                if (p.SetMethod.DeclaredAccessibility != p.DeclaredAccessibility)
-                                {
-                                    WriteAccessibility(p.SetMethod.DeclaredAccessibility, context.Writer);
-                                    context.Writer.Write(' ');
-                                }
-
-                                context.Writer.Write("set");
-                                WriteBody(context, GetBodyType(p.SetMethod));
-                                context.Writer.Write(' ');
-                            }
-
-                            context.Writer.Write('}');
-                        }
-
-                        context.Writer.WriteLine();
+                        GenerateProperty(p, asExplicitImplementation: false, context);
                         break;
 
                     case IMethodSymbol m:
-                        if (m.ReturnType.TypeKind == TypeKind.Pointer || m.Parameters.Any(p => p.Type.TypeKind == TypeKind.Pointer))
-                            context.Writer.Write("unsafe ");
-
-                        if (m.MethodKind == MethodKind.Conversion)
-                        {
-                            context.Writer.Write(m.Name switch
-                            {
-                                WellKnownMemberNames.ImplicitConversionName => "implicit operator ",
-                                WellKnownMemberNames.ExplicitConversionName => "explicit operator ",
-                            });
-                        }
-
-                        switch (m.MethodKind)
-                        {
-                            case MethodKind.Ordinary:
-                                context.WriteTypeReference(m.ReturnType);
-                                context.Writer.Write(' ');
-                                context.WriteIdentifier(m.Name);
-                                break;
-
-                            case MethodKind.Constructor:
-                            case MethodKind.StaticConstructor:
-                                context.WriteIdentifier(type.Name);
-                                break;
-
-                            case MethodKind.UserDefinedOperator:
-                                context.WriteTypeReference(m.ReturnType);
-                                context.Writer.Write(" operator ");
-                                SyntaxFactory.Token(SyntaxFacts.GetOperatorKind(m.Name)).WriteTo(context.Writer);
-                                break;
-
-                            case MethodKind.Conversion:
-                                context.WriteTypeReference(m.ReturnType);
-                                break;
-
-                            default:
-                                throw new NotImplementedException();
-                        }
-
-                        WriteGenericParameterList(m.TypeParameters, context);
-                        WriteParameterList(m, context);
-                        WriteGenericParameterConstraints(m.TypeParameters, context);
+                        GenerateMethodHeader(m, asExplicitImplementation: false, context);
 
                         if (m.MethodKind == MethodKind.Constructor && baseConstructorToCall is var (baseConstructor, specifyParameterTypes))
                         {
@@ -362,7 +233,7 @@ namespace GenerateRefAssemblySource
                             baseConstructorCallWasGenerated = true;
                         }
 
-                        WriteBody(context, GetBodyType(m));
+                        WriteBody(context, GetBodyType(m, asExplicitImplementation: false));
                         context.Writer.WriteLine();
                         break;
 
@@ -371,11 +242,14 @@ namespace GenerateRefAssemblySource
                 }
             }
 
+            // These should be strictly synthesized. If actual members are used, they will pull along unnecessary
+            // implementation details like attributes.
+
             if (!baseConstructorCallWasGenerated)
             {
                 if (baseConstructorToCall is var (baseConstructor, specifyParameterTypes))
                 {
-                    if (!isFirst) context.Writer.WriteLine();
+                    if (isFirst) isFirst = false; else context.Writer.WriteLine();
 
                     context.Writer.Write("internal ");
                     context.WriteIdentifier(type.Name);
@@ -385,6 +259,214 @@ namespace GenerateRefAssemblySource
                     context.Writer.WriteLine();
                 }
             }
+
+            if (type.TypeKind != TypeKind.Interface)
+            {
+                foreach (var interfaceMember in FilterAndSortTypeMembers(
+                    type.AllInterfaces
+                        .Except<INamedTypeSymbol>(type.BaseType?.AllInterfaces ?? ImmutableArray<INamedTypeSymbol>.Empty, SymbolEqualityComparer.Default)
+                        .SelectMany(i => i.GetMembers())
+                        .Where(m => !generatedMembers.Contains(type.FindImplementationForInterfaceMember(m)!))))
+                {
+                    if (isFirst) isFirst = false; else context.Writer.WriteLine();
+
+                    switch (interfaceMember)
+                    {
+                        case IEventSymbol e:
+                            GenerateEvent(e, asExplicitImplementation: true, context);
+                            break;
+
+                        case IPropertySymbol p:
+                            GenerateProperty(p, asExplicitImplementation: true, context);
+                            break;
+
+                        case IMethodSymbol m:
+                            GenerateMethodHeader(m, asExplicitImplementation: true, context);
+                            WriteBody(context, GetBodyType(m, asExplicitImplementation: true));
+                            context.Writer.WriteLine();
+                            break;
+
+                        default:
+                            throw new NotImplementedException("Implemented interface member that is not an event, property, or method.");
+                    }
+                }
+            }
+        }
+
+        private void GenerateField(IFieldSymbol field, GenerationContext context)
+        {
+            if (field.IsConst)
+            {
+                context.Writer.Write("const ");
+            }
+            else
+            {
+                if (field.IsStatic) context.Writer.Write("static ");
+                if (field.IsReadOnly) context.Writer.Write("readonly ");
+                if (field.Type.TypeKind == TypeKind.Pointer) context.Writer.Write("unsafe ");
+                if (field.IsVolatile) context.Writer.Write("volatile ");
+            }
+
+            context.WriteTypeReference(field.Type);
+            context.Writer.Write(' ');
+            context.WriteIdentifier(field.Name);
+
+            if (field.IsConst)
+            {
+                context.Writer.Write(" = ");
+                context
+                    .WithIsDefiningPrimitiveTypeConstant(MetadataFacts.IsPrimitiveType(field.ContainingType))
+                    .WriteLiteral(field.Type, field.ConstantValue);
+            }
+
+            context.Writer.WriteLine(';');
+        }
+
+        private void GenerateEvent(IEventSymbol @event, bool asExplicitImplementation, GenerationContext context)
+        {
+            if (@event.RaiseMethod is { })
+                throw new NotImplementedException("Raise accessor");
+
+            context.Writer.Write("event ");
+            context.WriteTypeReference(@event.Type);
+            context.Writer.Write(' ');
+
+            if (asExplicitImplementation)
+            {
+                context.WriteTypeReference(@event.ContainingType);
+                context.Writer.Write('.');
+            }
+
+            context.WriteIdentifier(@event.Name);
+
+            if (!asExplicitImplementation && (@event.IsAbstract || options.BodyOptions.UseFieldLikeEvents))
+            {
+                context.Writer.WriteLine(';');
+            }
+            else
+            {
+                context.Writer.Write(" { add");
+                WriteBody(context, GetBodyType(@event.AddMethod!, asExplicitImplementation));
+                context.Writer.Write(" remove");
+                WriteBody(context, GetBodyType(@event.RemoveMethod!, asExplicitImplementation));
+                context.Writer.WriteLine(" }");
+            }
+        }
+
+        private void GenerateProperty(IPropertySymbol property, bool asExplicitImplementation, GenerationContext context)
+        {
+            if (property.Type.TypeKind == TypeKind.Pointer) context.Writer.Write("unsafe ");
+
+            context.WriteTypeReference(property.Type);
+            context.Writer.Write(' ');
+
+            if (asExplicitImplementation)
+            {
+                context.WriteTypeReference(property.ContainingType);
+                context.Writer.Write('.');
+            }
+
+            if (property.IsIndexer)
+            {
+                context.Writer.Write("this[");
+                WriteParameterListContents(property.Parameters, asExplicitImplementation, context);
+                context.Writer.Write(']');
+            }
+            else
+            {
+                context.WriteIdentifier(property.Name);
+            }
+
+            if (options.BodyOptions.UseExpressionBodiedPropertiesWhenThrowingNull
+                && property is { GetMethod: not null, SetMethod: null }
+                && GetBodyType(property.GetMethod, asExplicitImplementation) == GeneratedBodyType.ThrowNull)
+            {
+                WriteBody(context, GeneratedBodyType.ThrowNull);
+            }
+            else
+            {
+                context.Writer.Write(" { ");
+
+                if (property.GetMethod is not null && MetadataFacts.IsVisibleOutsideAssembly(property.GetMethod))
+                {
+                    if (!asExplicitImplementation && property.GetMethod.DeclaredAccessibility != property.DeclaredAccessibility)
+                    {
+                        WriteAccessibility(property.GetMethod.DeclaredAccessibility, context.Writer);
+                        context.Writer.Write(' ');
+                    }
+
+                    context.Writer.Write("get");
+                    WriteBody(context, GetBodyType(property.GetMethod, asExplicitImplementation));
+                    context.Writer.Write(' ');
+                }
+
+                if (property.SetMethod is not null && MetadataFacts.IsVisibleOutsideAssembly(property.SetMethod))
+                {
+                    if (!asExplicitImplementation && property.SetMethod.DeclaredAccessibility != property.DeclaredAccessibility)
+                    {
+                        WriteAccessibility(property.SetMethod.DeclaredAccessibility, context.Writer);
+                        context.Writer.Write(' ');
+                    }
+
+                    context.Writer.Write("set");
+                    WriteBody(context, GetBodyType(property.SetMethod, asExplicitImplementation));
+                    context.Writer.Write(' ');
+                }
+
+                context.Writer.Write('}');
+            }
+
+            context.Writer.WriteLine();
+        }
+
+        private void GenerateMethodHeader(IMethodSymbol method, bool asExplicitImplementation, GenerationContext context)
+        {
+            if (method.ReturnType.TypeKind == TypeKind.Pointer || method.Parameters.Any(p => p.Type.TypeKind == TypeKind.Pointer))
+                context.Writer.Write("unsafe ");
+
+            switch (method.MethodKind)
+            {
+                case MethodKind.Ordinary:
+                    context.WriteTypeReference(method.ReturnType);
+                    context.Writer.Write(' ');
+
+                    if (asExplicitImplementation)
+                    {
+                        context.WriteTypeReference(method.ContainingType);
+                        context.Writer.Write('.');
+                    }
+
+                    context.WriteIdentifier(method.Name);
+                    break;
+
+                case MethodKind.Constructor:
+                case MethodKind.StaticConstructor:
+                    context.WriteIdentifier(method.ContainingType.Name);
+                    break;
+
+                case MethodKind.UserDefinedOperator:
+                    context.WriteTypeReference(method.ReturnType);
+                    context.Writer.Write(" operator ");
+                    SyntaxFactory.Token(SyntaxFacts.GetOperatorKind(method.Name)).WriteTo(context.Writer);
+                    break;
+
+                case MethodKind.Conversion:
+                    context.Writer.Write(method.Name switch
+                    {
+                        WellKnownMemberNames.ImplicitConversionName => "implicit operator ",
+                        WellKnownMemberNames.ExplicitConversionName => "explicit operator ",
+                    });
+
+                    context.WriteTypeReference(method.ReturnType);
+                    break;
+
+                default:
+                    throw new NotImplementedException();
+            }
+
+            WriteGenericParameterList(method.TypeParameters, context);
+            WriteParameterList(method, asExplicitImplementation, context);
+            WriteGenericParameterConstraints(method.TypeParameters, context);
         }
 
         private void GenerateBaseConstructorCall(IMethodSymbol baseConstructor, bool specifyParameterTypes, GenerationContext context)
@@ -411,10 +493,11 @@ namespace GenerateRefAssemblySource
             context.Writer.Indent--;
         }
 
-        private GeneratedBodyType GetBodyType(IMethodSymbol method)
+        private GeneratedBodyType GetBodyType(IMethodSymbol method, bool asExplicitImplementation)
         {
             return
-                method.IsAbstract || (method.MethodKind is MethodKind.PropertyGet or MethodKind.PropertySet && options.BodyOptions.UseAutoProperties) ? GeneratedBodyType.None :
+                (!asExplicitImplementation && method.IsAbstract)
+                || (method.MethodKind is MethodKind.PropertyGet or MethodKind.PropertySet && options.BodyOptions.UseAutoProperties) ? GeneratedBodyType.None :
                 method.ReturnsVoid ? options.BodyOptions.RequiredBodyWithVoidReturn :
                 options.BodyOptions.RequiredBodyWithNonVoidReturn;
         }
@@ -488,7 +571,7 @@ namespace GenerateRefAssemblySource
             context.WriteIdentifier(type.Name);
 
             WriteGenericParameterList(type.TypeParameters, context);
-            WriteParameterList(invokeMethod, context);
+            WriteParameterList(invokeMethod, asExplicitImplementation: false, context);
             WriteGenericParameterConstraints(type.TypeParameters, context);
 
             context.Writer.WriteLine(';');
@@ -596,21 +679,21 @@ namespace GenerateRefAssemblySource
             context.Writer.Indent--;
         }
 
-        private static void WriteParameterList(IMethodSymbol method, GenerationContext context)
+        private static void WriteParameterList(IMethodSymbol method, bool asExplicitImplementation, GenerationContext context)
         {
             context.Writer.Write('(');
-            WriteParameterListContents(method.Parameters, context);
+            WriteParameterListContents(method.Parameters, asExplicitImplementation, context);
             context.Writer.Write(')');
         }
 
-        private static void WriteParameterListContents(ImmutableArray<IParameterSymbol> parameters, GenerationContext context)
+        private static void WriteParameterListContents(ImmutableArray<IParameterSymbol> parameters, bool asExplicitImplementation, GenerationContext context)
         {
             for (var i = 0; i < parameters.Length; i++)
             {
                 if (i != 0) context.Writer.Write(", ");
                 var parameter = parameters[i];
 
-                if (parameter.IsOptional && !parameter.HasExplicitDefaultValue)
+                if (!asExplicitImplementation && parameter.IsOptional && !parameter.HasExplicitDefaultValue)
                 {
                     context.Writer.Write("[System.Runtime.InteropServices.Optional] ");
                 }
@@ -619,7 +702,7 @@ namespace GenerateRefAssemblySource
                 context.Writer.Write(' ');
                 context.WriteIdentifier(parameter.Name);
 
-                if (parameter.HasExplicitDefaultValue)
+                if (!asExplicitImplementation && parameter.HasExplicitDefaultValue)
                 {
                     if (!parameter.IsOptional) throw new NotImplementedException();
                     context.Writer.Write(" = ");
