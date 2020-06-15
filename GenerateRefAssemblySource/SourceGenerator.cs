@@ -204,6 +204,7 @@ namespace GenerateRefAssemblySource
                 if (member.Kind != SymbolKind.Field)
                 {
                     if (member.IsStatic) context.Writer.Write("static ");
+                    if (MetadataFacts.HidesBaseMember(member)) context.Writer.Write("new ");
                     if (member.IsVirtual) context.Writer.Write("virtual ");
                     if (member.IsAbstract && type.TypeKind != TypeKind.Interface) context.Writer.Write("abstract ");
                     if (member.IsSealed) context.Writer.Write("sealed ");
@@ -302,6 +303,7 @@ namespace GenerateRefAssemblySource
             else
             {
                 if (field.IsStatic) context.Writer.Write("static ");
+                if (MetadataFacts.HidesBaseMember(field)) context.Writer.Write("new ");
                 if (field.IsReadOnly) context.Writer.Write("readonly ");
                 if (field.Type.TypeKind == TypeKind.Pointer) context.Writer.Write("unsafe ");
                 if (field.IsVolatile) context.Writer.Write("volatile ");

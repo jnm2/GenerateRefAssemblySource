@@ -217,5 +217,62 @@ namespace GenerateRefAssemblySource
                 _ => null,
             };
         }
+
+        public static bool HidesBaseMember(ISymbol member)
+        {
+            if (!member.CanBeReferencedByName || member.IsOverride) return false;
+
+            var baseTypes = member.ContainingType.TypeKind == TypeKind.Interface
+                ? member.ContainingType.AllInterfaces
+                : EnumerateBaseTypes(member.ContainingType);
+
+            foreach (var baseType in baseTypes)
+            {
+                if (member is IPropertySymbol { IsIndexer: true } property)
+                {
+                    foreach (var baseProperty in baseType.GetMembers().OfType<IPropertySymbol>())
+                    {
+                        if (!IsVisibleOutsideAssembly(baseProperty)) continue;
+
+                        if (AreSignaturesEqual(property.Parameters, baseProperty.Parameters)) return true;
+                    }
+                }
+                else
+                {
+                    foreach (var baseMember in baseType.GetMembers(member.Name))
+                    {
+                        if (!IsVisibleOutsideAssembly(baseMember)) continue;
+
+                        if (member is IMethodSymbol method && baseMember is IMethodSymbol baseMethod)
+                        {
+                            if (method.Arity == baseMethod.Arity
+                                && AreSignaturesEqual(method.Parameters, baseMethod.Parameters))
+                            {
+                                return true;
+                            }
+                        }
+                        else
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        public static bool AreSignaturesEqual(ImmutableArray<IParameterSymbol> left, ImmutableArray<IParameterSymbol> right)
+        {
+            if (left.Length != right.Length) return false;
+
+            foreach (var (leftParam, rightParam) in left.Zip(right))
+            {
+                if ((leftParam.RefKind == RefKind.None) != (rightParam.RefKind == RefKind.None)) return false;
+                if (!SymbolEqualityComparer.Default.Equals(leftParam.Type, rightParam.Type)) return false;
+            }
+
+            return true;
+        }
     }
 }
