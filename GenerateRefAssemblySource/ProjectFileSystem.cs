@@ -17,9 +17,17 @@ namespace GenerateRefAssemblySource
 
         public TextWriter Create(string relativePath)
         {
-            var path = Path.Join(baseDirectory, relativePath);
+            var path = GetPath(relativePath);
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             return File.CreateText(path);
+        }
+
+        public string GetPath(string relativePath)
+        {
+            if (Path.IsPathFullyQualified(relativePath))
+                throw new ArgumentException("A relative path must be specified.", nameof(relativePath));
+
+            return Path.Join(baseDirectory, relativePath);
         }
     }
 }

@@ -2,6 +2,7 @@
 using Microsoft.CodeAnalysis.CSharp;
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 
@@ -40,28 +41,32 @@ namespace GenerateRefAssemblySource
 
 </Project>
 ");
+            var referencedAssemblies = compilation.Assembly.Modules.Single().ReferencedAssemblySymbols;
 
-            foreach (var reference in compilation.References)
+            var graph = referencedAssemblies.ToDictionary(
+                assembly => assembly.Name,
+                assembly => assembly.Modules
+                    .SelectMany(m => m.ReferencedAssemblies, (_, identity) => identity.Name)
+                    .Where(name => name != assembly.Name));
+
+            var cycleEdges = GraphUtils.GetCycleEdges(graph);
+
+            foreach (var assembly in referencedAssemblies)
             {
-                var assembly = (IAssemblySymbol?)compilation.GetAssemblyOrModuleSymbol(reference);
-                if (assembly is null) continue;
+                var fileSystem = new ProjectFileSystem(Path.Join(outputDirectory, assembly.Name));
+                var projectFileName = assembly.Name + ".csproj";
 
-                var projectFolder = Path.Join(outputDirectory, assembly.Name);
-                var projectFilePath = Path.Join(projectFolder, assembly.Name + ".csproj");
+                using (var writer = fileSystem.Create(projectFileName))
+                {
+                    var (assemblyReferences, projectReferences) = graph[assembly.Name]
+                        .Partition(name => cycleEdges.Contains((Dependent: assembly.Name, Dependency: name)));
 
-                File.WriteAllText(
-                    projectFilePath,
-@"<Project Sdk=""Microsoft.NET.Sdk"">
+                    WriteProjectFile(writer, assemblyReferences, projectReferences);
+                }
 
-  <PropertyGroup>
-    <TargetFramework>net35</TargetFramework>
-  </PropertyGroup>
+                projectsByAssemblyName.Add(assembly.Name, (Guid.NewGuid(), fileSystem.GetPath(projectFileName)));
 
-</Project>
-");
-                projectsByAssemblyName.Add(assembly.Name, (Guid.NewGuid(), projectFilePath));
-
-                generator.Generate(assembly, new ProjectFileSystem(projectFolder));
+                generator.Generate(assembly, fileSystem);
             }
 
             using var slnWriter = new SlnWriter(File.CreateText(Path.Join(outputDirectory, Path.GetFileName(outputDirectory) + ".sln")));
@@ -77,6 +82,56 @@ namespace GenerateRefAssemblySource
                 slnWriter.WriteProjectStart(sdkCsprojProjectType, name, Path.GetRelativePath(outputDirectory, fullPath), id);
                 slnWriter.WriteProjectEnd();
             }
+        }
+
+        private static void WriteProjectFile(
+            TextWriter writer,
+            ImmutableArray<string> assemblyReferences,
+            ImmutableArray<string> projectReferences)
+        {
+            writer.Write(
+@"<Project Sdk=""Microsoft.NET.Sdk"">
+
+  <PropertyGroup>
+    <TargetFramework>net35</TargetFramework>
+  </PropertyGroup>");
+
+            if (assemblyReferences.Any())
+            {
+                writer.Write(@"
+
+  <ItemGroup>");
+
+                foreach (var reference in assemblyReferences)
+                {
+                    writer.Write($@"
+    <Reference Include=""{reference}"" />");
+                }
+
+                writer.Write(@"
+  </ItemGroup>");
+            }
+
+            if (projectReferences.Any())
+            {
+                writer.Write(@"
+
+  <ItemGroup>");
+
+                foreach (var reference in projectReferences)
+                {
+                    writer.Write($@"
+    <ProjectReference Include=""..\{reference}\{reference}.csproj"" />");
+                }
+
+                writer.Write(@"
+  </ItemGroup>");
+            }
+
+            writer.Write(@"
+
+</Project>
+");
         }
     }
 }
