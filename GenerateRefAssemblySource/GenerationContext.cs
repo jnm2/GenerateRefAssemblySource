@@ -7,7 +7,7 @@ namespace GenerateRefAssemblySource
 {
     internal readonly struct GenerationContext
     {
-        public GenerationContext(IndentedTextWriter writer, INamespaceSymbol currentNamespace, bool isDefiningPrimitiveTypeConstant = false)
+        public GenerationContext(IndentedTextWriter writer, INamespaceSymbol? currentNamespace, bool isDefiningPrimitiveTypeConstant = false)
         {
             Writer = writer ?? throw new ArgumentNullException(nameof(writer));
             CurrentNamespace = currentNamespace;
@@ -15,7 +15,7 @@ namespace GenerateRefAssemblySource
         }
 
         public IndentedTextWriter Writer { get; }
-        public INamespaceSymbol CurrentNamespace { get; }
+        public INamespaceSymbol? CurrentNamespace { get; }
         public bool IsDefiningPrimitiveTypeConstant { get; }
 
         public GenerationContext WithIsDefiningPrimitiveTypeConstant(bool isDefiningPrimitiveTypeConstant)
@@ -28,7 +28,7 @@ namespace GenerateRefAssemblySource
             return SymbolEqualityComparer.Default.Equals(type.ContainingNamespace, CurrentNamespace);
         }
 
-        public void WriteTypeReference(ITypeSymbol type)
+        public void WriteTypeReference(ITypeSymbol type, bool asAttribute = false)
         {
             if (type.SpecialType switch
             {
@@ -103,7 +103,9 @@ namespace GenerateRefAssemblySource
                     }
                 }
 
-                WriteIdentifier(type.Name);
+                WriteIdentifier(asAttribute
+                    ? type.Name.RemoveEnd("Attribute", StringComparison.Ordinal)
+                    : type.Name);
 
                 if (named.TypeArguments.Any())
                 {
@@ -425,6 +427,26 @@ namespace GenerateRefAssemblySource
             if (value is null) throw new ArgumentNullException(nameof(value));
 
             SyntaxFactory.Literal(value).WriteTo(Writer);
+        }
+
+        public void WriteTypedConstant(ITypeSymbol type, TypedConstant constant)
+        {
+            switch (constant.Kind)
+            {
+                case TypedConstantKind.Enum:
+                case TypedConstantKind.Primitive:
+                    WriteLiteral(type, constant.Value);
+                    break;
+
+                case TypedConstantKind.Type:
+                    Writer.Write("typeof(");
+                    WriteTypeReference((ITypeSymbol)constant.Value!);
+                    Writer.Write(')');
+                    break;
+
+                default:
+                    throw new NotImplementedException(constant.Kind.ToString());
+            }
         }
 
         public void WriteIdentifier(string name)
