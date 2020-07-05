@@ -61,7 +61,11 @@ namespace GenerateRefAssemblySource
                     var (assemblyReferences, projectReferences) = graph[assembly.Name]
                         .Partition(name => cycleEdges.Contains((Dependent: assembly.Name, Dependency: name)));
 
-                    WriteProjectFile(writer, assemblyReferences, projectReferences);
+                    var runtimeMetadataVersion = assembly.GetTypeByMetadataName("System.Object") is not null
+                        ? assembly.GetMetadata()?.GetModules().Single().GetMetadataReader().MetadataVersion
+                        : null;
+
+                    WriteProjectFile(writer, assemblyReferences, projectReferences, runtimeMetadataVersion);
                 }
 
                 projectsByAssemblyName.Add(assembly.Name, (Guid.NewGuid(), fileSystem.GetPath(projectFileName)));
@@ -87,13 +91,22 @@ namespace GenerateRefAssemblySource
         private static void WriteProjectFile(
             TextWriter writer,
             ImmutableArray<string> assemblyReferences,
-            ImmutableArray<string> projectReferences)
+            ImmutableArray<string> projectReferences,
+            string? runtimeMetadataVersion)
         {
             writer.Write(
 @"<Project Sdk=""Microsoft.NET.Sdk"">
 
   <PropertyGroup>
-    <TargetFramework>net35</TargetFramework>
+    <TargetFramework>net35</TargetFramework>");
+
+            if (runtimeMetadataVersion is not null)
+            {
+                writer.Write($@"
+    <RuntimeMetadataVersion>{runtimeMetadataVersion}</RuntimeMetadataVersion>");
+            }
+
+            writer.Write(@"
   </PropertyGroup>");
 
             if (assemblyReferences.Any())
