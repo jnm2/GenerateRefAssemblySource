@@ -147,16 +147,9 @@ namespace GenerateRefAssemblySource
 
             if (type.TypeKind == TypeKind.Enum)
             {
-                var members = MetadataFacts.GetCombinedEnumMembers(type, value);
-                if (members.Any())
+                if (MetadataFacts.GetCombinedEnumMembers(type, value) is { } operation)
                 {
-                    for (var i = 0; i < members.Length; i++)
-                    {
-                        if (i != 0) Writer.Write(" | ");
-                        WriteTypeReference(type);
-                        Writer.Write('.');
-                        WriteIdentifier(members[i].Name);
-                    }
+                    operation.Write(this);
                 }
                 else
                 {

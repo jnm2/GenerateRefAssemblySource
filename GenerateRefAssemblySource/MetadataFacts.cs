@@ -129,7 +129,7 @@ namespace GenerateRefAssemblySource
             };
         }
 
-        public static ImmutableArray<IFieldSymbol> GetCombinedEnumMembers(ITypeSymbol enumType, object? value)
+        public static FlagsEnumSolver.Operation? GetCombinedEnumMembers(ITypeSymbol enumType, object? value)
         {
             if (enumType.TypeKind != TypeKind.Enum)
                 throw new ArgumentException("An enum type must be specified.", nameof(enumType));
@@ -137,13 +137,12 @@ namespace GenerateRefAssemblySource
             var firstMemberWithSameValue = enumType.GetMembers()
                 .OfType<IFieldSymbol>()
                 .Where(f => f.HasConstantValue && Equals(f.ConstantValue, value))
-                .Take(1) // Don't sort alphabetically; it won't keep things stable when new items are added anyway.
-                .ToImmutableArray();
+                .FirstOrDefault(); // Don't sort alphabetically; it won't keep things stable when new items are added anyway.
 
-            if (IsFlagsEnum(enumType) && firstMemberWithSameValue.IsEmpty)
-                throw new NotImplementedException();
-
-            return firstMemberWithSameValue;
+            return
+                firstMemberWithSameValue is not null ? new FlagsEnumSolver.EnumMemberOperation(firstMemberWithSameValue) :
+                IsFlagsEnum(enumType) ? new FlagsEnumSolver(enumType).Solve(Convert.ToUInt64(value)) :
+                null;
         }
 
         public static bool IsFlagsEnum(ITypeSymbol enumType)
