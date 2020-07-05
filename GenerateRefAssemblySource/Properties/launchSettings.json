@@ -2,7 +2,7 @@
   "profiles": {
     "GenerateRefAssemblySource": {
       "commandName": "Project",
-      "commandLineArgs": "\"C:\\Program Files (x86)\\Reference Assemblies\\Microsoft\\Framework\\.NETFramework\\v3.5\\Profile\\Client\"",
+      "commandLineArgs": "\"C:\\Users\\Joseph\\Desktop\\.NETFramework\\v3.5\"",
       "workingDirectory": "C:\\Users\\Joseph\\Desktop\\genrefsource"
     }
   }
