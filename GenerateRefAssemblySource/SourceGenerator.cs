@@ -266,6 +266,7 @@ namespace GenerateRefAssemblySource
                 foreach (var interfaceMember in FilterAndSortTypeMembers(
                     type.AllInterfaces
                         .Except<INamedTypeSymbol>(type.BaseType?.AllInterfaces ?? ImmutableArray<INamedTypeSymbol>.Empty, SymbolEqualityComparer.Default)
+                        .Where(MetadataFacts.IsVisibleOutsideAssembly)
                         .SelectMany(i => i.GetMembers())
                         .Where(m => !generatedMembers.Contains(type.FindImplementationForInterfaceMember(m)!))))
                 {
