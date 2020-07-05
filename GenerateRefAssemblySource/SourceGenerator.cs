@@ -44,12 +44,6 @@ namespace GenerateRefAssemblySource
 
             foreach (var attribute in attributes.OrderBy(a => a.AttributeClass, NamespaceOrTypeFullNameComparer.Instance))
             {
-                if (attribute.AttributeConstructor is null)
-                {
-                    writer.WriteLine("// ERROR: Attribute constructor is not known");
-                    continue;
-                }
-
                 writer.Write('[');
                 writer.Write(target);
                 writer.Write(": ");
@@ -61,10 +55,10 @@ namespace GenerateRefAssemblySource
 
                     var isFirst = true;
 
-                    foreach (var (param, value) in attribute.AttributeConstructor.Parameters.Zip(attribute.ConstructorArguments))
+                    foreach (var value in attribute.ConstructorArguments)
                     {
                         if (isFirst) isFirst = false; else writer.Write(", ");
-                        context.WriteTypedConstant(param.Type, value);
+                        context.WriteTypedConstant(value);
                     }
 
                     foreach (var (name, value) in attribute.NamedArguments)
@@ -73,17 +67,7 @@ namespace GenerateRefAssemblySource
 
                         context.WriteIdentifier(name);
                         writer.Write(" = ");
-
-                        var memberType = attribute.AttributeClass!.GetMembers(name)
-                            .Select(member => member switch
-                            {
-                                IFieldSymbol field => field.Type,
-                                IPropertySymbol { IsIndexer: false } property => property.Type,
-                                _ => null
-                            })
-                            .Single(type => type is not null)!;
-
-                        context.WriteTypedConstant(memberType, value);
+                        context.WriteTypedConstant(value);
                     }
 
                     writer.Write(')');

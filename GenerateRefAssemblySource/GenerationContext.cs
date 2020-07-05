@@ -422,13 +422,13 @@ namespace GenerateRefAssemblySource
             SyntaxFactory.Literal(value).WriteTo(Writer);
         }
 
-        public void WriteTypedConstant(ITypeSymbol type, TypedConstant constant)
+        public void WriteTypedConstant(TypedConstant constant)
         {
             switch (constant.Kind)
             {
                 case TypedConstantKind.Enum:
                 case TypedConstantKind.Primitive:
-                    WriteLiteral(type, constant.Value);
+                    WriteLiteral(constant.Type, constant.Value);
                     break;
 
                 case TypedConstantKind.Type:
