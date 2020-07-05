@@ -20,60 +20,77 @@ namespace GenerateRefAssemblySource
 
         public void Generate(IAssemblySymbol assembly, IProjectFileSystem fileSystem)
         {
-            var attributes = assembly.GetAttributes();
-            if (attributes.Any())
+            var assemblyAttributes = assembly.GetAttributes();
+            if (assemblyAttributes.Any())
+                GenerateAttributesFile(fileSystem, assemblyAttributes, "Properties/AssemblyInfo.cs", "assembly");
+
+            var moduleAttributes = assembly.Modules.SelectMany(m => m.GetAttributes()).ToImmutableArray();
+            if (moduleAttributes.Any())
             {
-                using var textWriter = fileSystem.Create("Properties/AssemblyInfo.cs");
-                using var writer = new IndentedTextWriter(textWriter);
-                var context = new GenerationContext(writer, currentNamespace: null);
+                if (assembly.Modules.Count() > 1)
+                    throw new NotImplementedException("Multiple modules with attributes");
 
-                foreach (var attribute in attributes.OrderBy(a => a.AttributeClass, NamespaceOrTypeFullNameComparer.Instance))
-                {
-                    if (attribute.AttributeConstructor is null)
-                        throw new NotImplementedException("Attribute constructor is not known");
-
-                    writer.Write("[assembly: ");
-                    context.WriteTypeReference(attribute.AttributeClass!, asAttribute: true);
-
-                    if (attribute.ConstructorArguments.Any() || attribute.NamedArguments.Any())
-                    {
-                        writer.Write('(');
-
-                        var isFirst = true;
-
-                        foreach (var (param, value) in attribute.AttributeConstructor.Parameters.Zip(attribute.ConstructorArguments))
-                        {
-                            if (isFirst) isFirst = false; else writer.Write(", ");
-                            context.WriteTypedConstant(param.Type, value);
-                        }
-
-                        foreach (var (name, value) in attribute.NamedArguments)
-                        {
-                            if (isFirst) isFirst = false; else writer.Write(", ");
-
-                            context.WriteIdentifier(name);
-                            writer.Write(" = ");
-
-                            var memberType = attribute.AttributeClass!.GetMembers(name)
-                                .Select(member => member switch
-                                {
-                                    IFieldSymbol field => field.Type,
-                                    IPropertySymbol { IsIndexer: false } property => property.Type,
-                                    _ => null
-                                })
-                                .Single(type => type is not null)!;
-
-                            context.WriteTypedConstant(memberType, value);
-                        }
-
-                        writer.Write(')');
-                    }
-
-                    writer.WriteLine(']');
-                }
+                GenerateAttributesFile(fileSystem, moduleAttributes, "Properties/ModuleInfo.cs", "module");
             }
 
             VisitNamespace(assembly.GlobalNamespace, fileSystem);
+        }
+
+        private static void GenerateAttributesFile(IProjectFileSystem fileSystem, ImmutableArray<AttributeData> attributes, string fileName, string target)
+        {
+            using var textWriter = fileSystem.Create(fileName);
+            using var writer = new IndentedTextWriter(textWriter);
+            var context = new GenerationContext(writer, currentNamespace: null);
+
+            foreach (var attribute in attributes.OrderBy(a => a.AttributeClass, NamespaceOrTypeFullNameComparer.Instance))
+            {
+                if (attribute.AttributeConstructor is null)
+                {
+                    writer.WriteLine("// ERROR: Attribute constructor is not known");
+                    continue;
+                }
+
+                writer.Write('[');
+                writer.Write(target);
+                writer.Write(": ");
+                context.WriteTypeReference(attribute.AttributeClass!, asAttribute: true);
+
+                if (attribute.ConstructorArguments.Any() || attribute.NamedArguments.Any())
+                {
+                    writer.Write('(');
+
+                    var isFirst = true;
+
+                    foreach (var (param, value) in attribute.AttributeConstructor.Parameters.Zip(attribute.ConstructorArguments))
+                    {
+                        if (isFirst) isFirst = false; else writer.Write(", ");
+                        context.WriteTypedConstant(param.Type, value);
+                    }
+
+                    foreach (var (name, value) in attribute.NamedArguments)
+                    {
+                        if (isFirst) isFirst = false; else writer.Write(", ");
+
+                        context.WriteIdentifier(name);
+                        writer.Write(" = ");
+
+                        var memberType = attribute.AttributeClass!.GetMembers(name)
+                            .Select(member => member switch
+                            {
+                                IFieldSymbol field => field.Type,
+                                IPropertySymbol { IsIndexer: false } property => property.Type,
+                                _ => null
+                            })
+                            .Single(type => type is not null)!;
+
+                        context.WriteTypedConstant(memberType, value);
+                    }
+
+                    writer.Write(')');
+                }
+
+                writer.WriteLine(']');
+            }
         }
 
         private void VisitNamespace(INamespaceSymbol @namespace, IProjectFileSystem fileSystem)
