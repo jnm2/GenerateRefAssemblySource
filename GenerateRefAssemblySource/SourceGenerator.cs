@@ -204,6 +204,10 @@ namespace GenerateRefAssemblySource
                     context.Writer.WriteLine(")]");
                 }
 
+                WriteAttributes(member.GetAttributes(), target: null, context);
+                if (member is IMethodSymbol method)
+                    WriteAttributes(method.GetReturnTypeAttributes(), target: "return", context);
+
                 if (!(member.DeclaredAccessibility == Accessibility.Public && type.TypeKind == TypeKind.Interface))
                     WriteAccessibility(member.DeclaredAccessibility, context.Writer);
 
@@ -606,6 +610,7 @@ namespace GenerateRefAssemblySource
                 .OrderBy(f => f.ConstantValue)
                 .ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
             {
+                WriteAttributes(field.GetAttributes(), target: null, context);
                 context.WriteIdentifier(field.Name);
                 context.Writer.Write(" = ");
                 context.Writer.Write(field.ConstantValue);
