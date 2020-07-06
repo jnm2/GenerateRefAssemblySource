@@ -20,11 +20,28 @@ namespace GenerateRefAssemblySource
 
         public void Generate(IAssemblySymbol assembly, IProjectFileSystem fileSystem)
         {
-            var assemblyAttributes = assembly.GetAttributes();
+            var assemblyAttributes = assembly.GetAttributes()
+                .Where(a => !(
+                    options.RemoveAssemblySigningAttributes
+                    && a.AttributeClass?.Name is
+                        "AssemblyDelaySignAttribute"
+                        or "AssemblyKeyFileAttribute"
+                        or "AssemblyKeyNameAttribute"
+                        or "AssemblySignatureKeyAttribute"
+                    && a.AttributeClass.ContainingNamespace.HasFullName("System", "Reflection")))
+                .ToImmutableArray();
+
             if (assemblyAttributes.Any())
                 GenerateAttributesFile(fileSystem, assemblyAttributes, "Properties/AssemblyInfo.cs", "assembly");
 
-            var moduleAttributes = assembly.Modules.SelectMany(m => m.GetAttributes()).ToImmutableArray();
+            var moduleAttributes = assembly.Modules
+                .SelectMany(m => m.GetAttributes())
+                .Where(a => !(
+                    options.RemoveUnverifiableCodeAttribute
+                    && a.AttributeClass is not null
+                    && a.AttributeClass.HasFullName("System", "Security", "UnverifiableCodeAttribute")))
+                .ToImmutableArray();
+
             if (moduleAttributes.Any())
             {
                 if (assembly.Modules.Count() > 1)
