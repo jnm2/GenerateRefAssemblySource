@@ -633,6 +633,9 @@ namespace GenerateRefAssemblySource
 
                 var genericParameter = typeParameters[i];
 
+                if (genericParameter.GetAttributes().Any())
+                    throw new NotImplementedException("Generic parameter attributes");
+
                 context.Writer.Write(genericParameter.Variance switch
                 {
                     VarianceKind.In => "in ",
@@ -702,15 +705,36 @@ namespace GenerateRefAssemblySource
 
         private static void WriteParameterListContents(ImmutableArray<IParameterSymbol> parameters, bool asExplicitImplementation, GenerationContext context)
         {
+            var multiline = !asExplicitImplementation && (parameters.Length > 3 || parameters.SelectMany(p => p.GetAttributes()).Any());
+            if (multiline)
+            {
+                context.Writer.WriteLine();
+                context.Writer.Indent++;
+            }
+
             for (var i = 0; i < parameters.Length; i++)
             {
-                if (i != 0) context.Writer.Write(", ");
+                if (i != 0)
+                {
+                    if (multiline)
+                        context.Writer.WriteLine(',');
+                    else
+                        context.Writer.Write(", ");
+                }
+
                 var parameter = parameters[i];
 
                 if (!asExplicitImplementation && parameter.IsOptional && !parameter.HasExplicitDefaultValue)
                 {
-                    context.Writer.Write("[System.Runtime.InteropServices.Optional] ");
+                    context.Writer.Write("[System.Runtime.InteropServices.Optional]");
+                    if (multiline)
+                        context.Writer.WriteLine();
+                    else
+                        context.Writer.Write(' ');
                 }
+
+                if (!asExplicitImplementation)
+                    WriteAttributes(parameter.GetAttributes(), target: null, context);
 
                 context.WriteTypeReference(parameter.Type);
                 context.Writer.Write(' ');
@@ -723,6 +747,8 @@ namespace GenerateRefAssemblySource
                     context.WriteLiteral(parameter.Type, parameter.ExplicitDefaultValue);
                 }
             }
+
+            if (multiline) context.Writer.Indent--;
         }
 
         private static void WriteAccessibility(Accessibility accessibility, TextWriter writer)

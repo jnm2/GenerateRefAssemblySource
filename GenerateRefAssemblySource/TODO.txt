@@ -1,4 +1,3 @@
-﻿Add attributes, incl. assembly attributes
-Only generate project references for generated surface
+﻿Only generate project references for generated surface
 Actually follow https://github.com/dotnet/roslyn/blob/master/docs/features/refout.md
 Perf
