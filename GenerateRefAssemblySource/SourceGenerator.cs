@@ -108,15 +108,16 @@ namespace GenerateRefAssemblySource
             using var textWriter = fileSystem.Create(GetPathForType(type));
             using var writer = new IndentedTextWriter(textWriter);
 
+            var context = new GenerationContext(writer, type.ContainingNamespace);
+
             if (!type.ContainingNamespace.IsGlobalNamespace)
             {
                 writer.Write("namespace ");
-                writer.WriteLine(type.ContainingNamespace.ToDisplayString());
+                context.WriteNamespace(type.ContainingNamespace);
+                writer.WriteLine();
                 writer.WriteLine('{');
                 writer.Indent++;
             }
-
-            var context = new GenerationContext(writer, type.ContainingNamespace);
 
             var containingTypes = MetadataFacts.GetContainingTypes(type);
             foreach (var containingType in containingTypes)

@@ -1,6 +1,7 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace GenerateRefAssemblySource
@@ -98,7 +99,7 @@ namespace GenerateRefAssemblySource
                     }
                     else
                     {
-                        Writer.Write(type.ContainingNamespace.ToDisplayString());
+                        WriteNamespace(type.ContainingNamespace);
                         Writer.Write('.');
                     }
                 }
@@ -137,6 +138,20 @@ namespace GenerateRefAssemblySource
             else
             {
                 throw new NotImplementedException();
+            }
+        }
+
+        public void WriteNamespace(INamespaceSymbol @namespace)
+        {
+            var parts = new List<string>();
+
+            for (var current = @namespace; current is { IsGlobalNamespace: false }; current = current.ContainingNamespace)
+                parts.Add(current.Name);
+
+            for (var i = parts.Count - 1; i >= 0; i--)
+            {
+                Writer.Write(parts[i]);
+                if (i != 0) Writer.Write('.');
             }
         }
 
