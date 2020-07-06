@@ -9,35 +9,36 @@ namespace GenerateRefAssemblySource
     {
         private void GenerateModuleAttributes(IAssemblySymbol assembly, IProjectFileSystem fileSystem)
         {
-            var moduleAttributes = assembly.Modules
-                .SelectMany(m => m.GetAttributes())
-                .Where(a => !(
-                    options.RemoveUnverifiableCodeAttribute
-                    && a.AttributeClass is not null
-                    && a.AttributeClass.HasFullName("System", "Security", "UnverifiableCodeAttribute")))
-                .ToImmutableArray();
+            if (assembly.Modules.Count() > 1 && assembly.Modules.SelectMany(m => m.GetAttributes()).Any())
+                throw new NotImplementedException("Multiple modules with attributes");
+
+            var moduleAttributes = assembly.Modules.Single().GetAttributes();
+
+            if (options.RemoveUnverifiableCodeAttribute)
+            {
+                moduleAttributes = moduleAttributes.RemoveAll(a =>
+                    a.AttributeClass is not null
+                    && a.AttributeClass.HasFullName("System", "Security", "UnverifiableCodeAttribute"));
+            }
 
             if (moduleAttributes.Any())
-            {
-                if (assembly.Modules.Count() > 1)
-                    throw new NotImplementedException("Multiple modules with attributes");
-
                 GenerateAttributesFile(fileSystem, "Properties/ModuleInfo.cs", moduleAttributes, "module");
-            }
         }
 
         private void GenerateAssemblyAttributes(IAssemblySymbol assembly, IProjectFileSystem fileSystem)
         {
-            var assemblyAttributes = assembly.GetAttributes()
-                .Where(a => !(
-                    options.RemoveAssemblySigningAttributes
-                    && a.AttributeClass?.Name is
+            var assemblyAttributes = assembly.GetAttributes();
+
+            if (options.RemoveAssemblySigningAttributes)
+            {
+                assemblyAttributes = assemblyAttributes.RemoveAll(a =>
+                    a.AttributeClass?.Name is
                         "AssemblyDelaySignAttribute"
                         or "AssemblyKeyFileAttribute"
                         or "AssemblyKeyNameAttribute"
                         or "AssemblySignatureKeyAttribute"
-                    && a.AttributeClass.ContainingNamespace.HasFullName("System", "Reflection")))
-                .ToImmutableArray();
+                    && a.AttributeClass.ContainingNamespace.HasFullName("System", "Reflection"));
+            }
 
             if (assemblyAttributes.Any())
                 GenerateAttributesFile(fileSystem, "Properties/AssemblyInfo.cs", assemblyAttributes, "assembly");
