@@ -76,6 +76,8 @@ namespace GenerateRefAssemblySource
                 writer.Indent++;
             }
 
+            WriteAttributes(type.GetAttributes(), target: null, context);
+
             WriteAccessibility(type.DeclaredAccessibility, writer);
 
             if (type.TypeKind == TypeKind.Delegate)
