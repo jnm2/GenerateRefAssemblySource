@@ -1,5 +1,6 @@
 ﻿using Microsoft.CodeAnalysis;
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 
@@ -52,7 +53,7 @@ namespace GenerateRefAssemblySource
             WriteAttributes(attributes, target, new GenerationContext(writer, currentNamespace: null));
         }
 
-        private static void WriteAttributes(ImmutableArray<AttributeData> attributes, string? target, GenerationContext context)
+        private static void WriteAttributes(IEnumerable<AttributeData> attributes, string? target, GenerationContext context)
         {
             foreach (var attribute in attributes.OrderBy(a => a.AttributeClass, NamespaceOrTypeFullNameComparer.Instance))
             {

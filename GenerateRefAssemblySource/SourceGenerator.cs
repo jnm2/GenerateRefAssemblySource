@@ -76,7 +76,8 @@ namespace GenerateRefAssemblySource
                 writer.Indent++;
             }
 
-            WriteAttributes(type.GetAttributes(), target: null, context);
+            var filteredAttributes = type.GetAttributes().Where(a => a.AttributeClass?.HasFullName("System", "Reflection", "DefaultMemberAttribute") != true);
+            WriteAttributes(filteredAttributes, target: null, context);
 
             WriteAccessibility(type.DeclaredAccessibility, writer);
 
