@@ -38,7 +38,7 @@ namespace GenerateRefAssemblySource
 
         private static void GenerateAttributesFile(IProjectFileSystem fileSystem, ImmutableArray<AttributeData> attributes, string fileName, string target)
         {
-            using var textWriter = fileSystem.Create(fileName);
+            using var textWriter = fileSystem.CreateText(fileName);
             using var writer = new IndentedTextWriter(textWriter);
             var context = new GenerationContext(writer, currentNamespace: null);
 
@@ -105,7 +105,7 @@ namespace GenerateRefAssemblySource
 
         private void GenerateType(INamedTypeSymbol type, IProjectFileSystem fileSystem, bool declareAsPartial)
         {
-            using var textWriter = fileSystem.Create(GetPathForType(type));
+            using var textWriter = fileSystem.CreateText(GetPathForType(type));
             using var writer = new IndentedTextWriter(textWriter);
 
             var context = new GenerationContext(writer, type.ContainingNamespace);

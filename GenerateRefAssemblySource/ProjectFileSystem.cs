@@ -15,7 +15,7 @@ namespace GenerateRefAssemblySource
             this.baseDirectory = baseDirectory;
         }
 
-        public TextWriter Create(string relativePath)
+        public TextWriter CreateText(string relativePath)
         {
             var path = GetPath(relativePath);
             Directory.CreateDirectory(Path.GetDirectoryName(path));

@@ -56,7 +56,7 @@ namespace GenerateRefAssemblySource
                 var fileSystem = new ProjectFileSystem(Path.Join(outputDirectory, assembly.Name));
                 var projectFileName = assembly.Name + ".csproj";
 
-                using (var writer = fileSystem.Create(projectFileName))
+                using (var writer = fileSystem.CreateText(projectFileName))
                 {
                     var (assemblyReferences, projectReferences) = graph[assembly.Name]
                         .Partition(name => cycleEdges.Contains((Dependent: assembly.Name, Dependency: name)));
