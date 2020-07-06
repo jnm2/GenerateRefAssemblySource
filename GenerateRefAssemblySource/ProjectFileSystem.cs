@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Immutable;
 using System.IO;
 
 namespace GenerateRefAssemblySource
@@ -15,19 +16,30 @@ namespace GenerateRefAssemblySource
             this.baseDirectory = baseDirectory;
         }
 
-        public TextWriter CreateText(string relativePath)
-        {
-            var path = GetPath(relativePath);
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            return File.CreateText(path);
-        }
-
         public string GetPath(string relativePath)
         {
             if (Path.IsPathFullyQualified(relativePath))
                 throw new ArgumentException("A relative path must be specified.", nameof(relativePath));
 
             return Path.Join(baseDirectory, relativePath);
+        }
+
+        public void Create(string relativePath, ImmutableArray<byte> contents)
+        {
+            using var stream = Create(relativePath);
+            stream.Write(contents.AsSpan());
+        }
+
+        public TextWriter CreateText(string relativePath)
+        {
+            return new StreamWriter(Create(relativePath));
+        }
+
+        private Stream Create(string relativePath)
+        {
+            var path = GetPath(relativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            return File.Create(path);
         }
     }
 }

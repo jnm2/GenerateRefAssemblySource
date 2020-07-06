@@ -56,6 +56,10 @@ namespace GenerateRefAssemblySource
                 var fileSystem = new ProjectFileSystem(Path.Join(outputDirectory, assembly.Name));
                 var projectFileName = assembly.Name + ".csproj";
 
+                var publicSignKeyPath = assembly.Identity.HasPublicKey ? "Public.snk" : null;
+                if (publicSignKeyPath is not null)
+                    fileSystem.Create(publicSignKeyPath, assembly.Identity.PublicKey);
+
                 using (var writer = fileSystem.CreateText(projectFileName))
                 {
                     var (assemblyReferences, projectReferences) = graph[assembly.Name]
@@ -65,7 +69,7 @@ namespace GenerateRefAssemblySource
                         ? assembly.GetMetadata()?.GetModules().Single().GetMetadataReader().MetadataVersion
                         : null;
 
-                    WriteProjectFile(writer, assemblyReferences, projectReferences, runtimeMetadataVersion);
+                    WriteProjectFile(writer, assemblyReferences, projectReferences, runtimeMetadataVersion, publicSignKeyPath);
                 }
 
                 projectsByAssemblyName.Add(assembly.Name, (Guid.NewGuid(), fileSystem.GetPath(projectFileName)));
@@ -92,7 +96,8 @@ namespace GenerateRefAssemblySource
             TextWriter writer,
             ImmutableArray<string> assemblyReferences,
             ImmutableArray<string> projectReferences,
-            string? runtimeMetadataVersion)
+            string? runtimeMetadataVersion,
+            string? publicSignKeyPath)
         {
             writer.Write(
 @"<Project Sdk=""Microsoft.NET.Sdk"">
@@ -104,6 +109,14 @@ namespace GenerateRefAssemblySource
             {
                 writer.Write($@"
     <RuntimeMetadataVersion>{runtimeMetadataVersion}</RuntimeMetadataVersion>");
+            }
+
+            if (publicSignKeyPath is not null)
+            {
+                writer.Write($@"
+    <SignAssembly>true</SignAssembly>
+    <PublicSign>True</PublicSign>
+    <AssemblyOriginatorKeyFile>{publicSignKeyPath}</AssemblyOriginatorKeyFile>");
             }
 
             writer.Write(@"
