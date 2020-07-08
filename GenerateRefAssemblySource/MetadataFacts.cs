@@ -313,5 +313,28 @@ namespace GenerateRefAssemblySource
 
             return currentNamespace.IsGlobalNamespace;
         }
+
+        public static bool CanAccessType(IAssemblySymbol assembly, string fullyQualifiedMetadataName)
+        {
+            if (assembly.GetTypeByMetadataName(fullyQualifiedMetadataName) is not null)
+                return true;
+
+            foreach (var module in assembly.Modules)
+            {
+                foreach (var referencedAssembly in module.ReferencedAssemblySymbols)
+                {
+                    if (referencedAssembly.GetTypeByMetadataName(fullyQualifiedMetadataName) is { } type)
+                    {
+                        if (type.ContainingType is not null)
+                            throw new NotImplementedException("Check visibility of nested type");
+
+                        return type.DeclaredAccessibility == Accessibility.Public
+                            || (type.DeclaredAccessibility == Accessibility.Internal && referencedAssembly.GivesAccessTo(assembly));
+                    }
+                }
+            }
+
+            return false;
+        }
     }
 }

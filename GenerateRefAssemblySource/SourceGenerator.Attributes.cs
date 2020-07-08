@@ -22,8 +22,7 @@ namespace GenerateRefAssemblySource
                     && a.AttributeClass.HasFullName("System", "Security", "UnverifiableCodeAttribute"));
             }
 
-            if (moduleAttributes.Any())
-                GenerateAttributesFile(fileSystem, "Properties/ModuleInfo.cs", moduleAttributes, "module");
+            GenerateAttributesFile(fileSystem, "Properties/ModuleInfo.cs", moduleAttributes, "module");
         }
 
         private void GenerateAssemblyAttributes(IAssemblySymbol assembly, IProjectFileSystem fileSystem)
@@ -41,14 +40,41 @@ namespace GenerateRefAssemblySource
                     && a.AttributeClass.ContainingNamespace.HasFullName("System", "Reflection"));
             }
 
-            if (assemblyAttributes.Any())
-                GenerateAttributesFile(fileSystem, "Properties/AssemblyInfo.cs", assemblyAttributes, "assembly");
+            GenerateAttributesFile(fileSystem, "Properties/AssemblyInfo.cs", assemblyAttributes, "assembly", initialLines: ImmutableArray.Create(
+                "[assembly: System.Runtime.CompilerServices.ReferenceAssembly]",
+                $"[assembly: System.Reflection.AssemblyVersion(\"{assembly.Identity.Version}\")]"));
+
+            if (!MetadataFacts.CanAccessType(assembly, "System.Runtime.CompilerServices.ReferenceAssemblyAttribute"))
+            {
+                fileSystem.WriteAllLines(
+                    "System/Runtime/CompilerServices/ReferenceAssemblyAttribute.cs",
+                    "namespace System.Runtime.CompilerServices",
+                    "{",
+                    "    internal sealed class ReferenceAssemblyAttribute : Attribute { }",
+                    "}");
+            }
         }
 
-        private static void GenerateAttributesFile(IProjectFileSystem fileSystem, string fileName, ImmutableArray<AttributeData> attributes, string target)
+        private static void GenerateAttributesFile(
+            IProjectFileSystem fileSystem,
+            string fileName,
+            ImmutableArray<AttributeData> attributes,
+            string target,
+            ImmutableArray<string> initialLines = default)
         {
+            if (attributes.IsEmpty && initialLines.IsDefaultOrEmpty) return;
+
             using var textWriter = fileSystem.CreateText(fileName);
             using var writer = new IndentedTextWriter(textWriter);
+
+            if (!initialLines.IsDefaultOrEmpty)
+            {
+                foreach (var line in initialLines)
+                    writer.WriteLine(line);
+
+                if (!attributes.IsEmpty)
+                    writer.WriteLine();
+            }
 
             WriteAttributes(attributes, target, new GenerationContext(writer, currentNamespace: null));
         }
