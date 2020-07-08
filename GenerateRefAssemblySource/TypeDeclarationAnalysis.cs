@@ -13,6 +13,14 @@ namespace GenerateRefAssemblySource
 
         public IReadOnlyDictionary<INamedTypeSymbol, TypeDeclarationReason> ReasonsByType => reasonsByType;
 
+        public bool IsVisibleOrInOtherAssembly(INamedTypeSymbol type)
+        {
+            if (ReasonsByType.TryGetValue(type, out var reason))
+                return reason.HasFlag(TypeDeclarationReason.ExternallyVisible);
+            else
+                return !assembly.Equals(type.ContainingAssembly, SymbolEqualityComparer.Default);
+        }
+
         public bool IsUsedAttributeConstructor(IMethodSymbol method) => usedAttributeConstructors.Contains(method);
 
         public TypeDeclarationAnalysis(IAssemblySymbol assembly)

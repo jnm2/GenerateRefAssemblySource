@@ -92,14 +92,32 @@ namespace GenerateRefAssemblySource
 
                 WriteContainerTypeHeader(type, declareAsPartial, context);
 
-                var baseTypes = new List<INamedTypeSymbol>();
+                var generatedBaseType = type.BaseType;
 
-                if (type.BaseType is { SpecialType: not (SpecialType.System_Object or SpecialType.System_ValueType) })
-                    baseTypes.Add(type.BaseType);
+                if (reason.HasFlag(TypeDeclarationReason.ExternallyVisible))
+                {
+                    var baseTypes = new List<INamedTypeSymbol>();
 
-                baseTypes.AddRange(type.Interfaces.Where(i => MetadataFacts.IsVisibleOutsideAssembly(i)));
+                    if (type.BaseType is { SpecialType: not (SpecialType.System_Object or SpecialType.System_ValueType) })
+                        baseTypes.Add(type.BaseType);
 
-                WriteBaseTypes(MetadataFacts.RemoveBaseTypes(baseTypes), context);
+                    baseTypes.AddRange(type.Interfaces.Where(i => MetadataFacts.IsVisibleOutsideAssembly(i)));
+
+                    WriteBaseTypes(MetadataFacts.RemoveBaseTypes(baseTypes), context);
+                }
+                else if (reason.HasFlag(TypeDeclarationReason.DeclaresUsedAttribute))
+                {
+                    // Skip base types that are not visible
+                    while (generatedBaseType is not null && !typeDeclarationAnalysis.IsVisibleOrInOtherAssembly(generatedBaseType))
+                        generatedBaseType = generatedBaseType.BaseType;
+
+                    if (generatedBaseType is not null)
+                        WriteBaseTypes(new[] { generatedBaseType }, context);
+                }
+                else
+                {
+                    generatedBaseType = null;
+                }
 
                 WriteGenericParameterConstraints(type.TypeParameters, context);
 
@@ -107,7 +125,7 @@ namespace GenerateRefAssemblySource
                 writer.WriteLine('{');
                 writer.Indent++;
 
-                WriteTypeMembers(type, typeDeclarationAnalysis, context);
+                WriteTypeMembers(type, reason, generatedBaseType, typeDeclarationAnalysis, context);
 
                 writer.Indent--;
                 writer.WriteLine('}');
@@ -139,12 +157,17 @@ namespace GenerateRefAssemblySource
                 .Select(m => m.Member);
         }
 
-        private void WriteTypeMembers(INamedTypeSymbol type, TypeDeclarationAnalysis typeDeclarationAnalysis, GenerationContext context)
+        private void WriteTypeMembers(
+            INamedTypeSymbol type,
+            TypeDeclarationReason reason,
+            INamedTypeSymbol? generatedBaseType,
+            TypeDeclarationAnalysis typeDeclarationAnalysis,
+            GenerationContext context)
         {
             var baseConstructorToCall = ((IMethodSymbol Constructor, bool SpecifyParameterTypes)?)null;
 
             if (options.GenerateRequiredBaseConstructorCalls
-                && type.BaseType is INamedTypeSymbol baseType
+                && generatedBaseType is INamedTypeSymbol baseType
                 && baseType.InstanceConstructors.Any()
                 && !baseType.InstanceConstructors.Any(c => c.Parameters.IsEmpty))
             {
@@ -167,7 +190,8 @@ namespace GenerateRefAssemblySource
                 {
                     if (!MetadataFacts.IsVisibleOutsideAssembly(m))
                     {
-                        if (m is IMethodSymbol { MethodKind: MethodKind.Constructor } constructor
+                        if (reason.HasFlag(TypeDeclarationReason.DeclaresUsedAttribute)
+                            && m is IMethodSymbol { MethodKind: MethodKind.Constructor } constructor
                             && typeDeclarationAnalysis.IsUsedAttributeConstructor(constructor))
                         {
                             return true;
@@ -234,7 +258,9 @@ namespace GenerateRefAssemblySource
                     case IMethodSymbol m:
                         GenerateMethodHeader(m, asExplicitImplementation: false, context);
 
-                        if (m.MethodKind == MethodKind.Constructor && baseConstructorToCall is var (baseConstructor, specifyParameterTypes))
+                        if (reason.HasFlag(TypeDeclarationReason.ExternallyVisible)
+                            && m.MethodKind == MethodKind.Constructor
+                            && baseConstructorToCall is var (baseConstructor, specifyParameterTypes))
                         {
                             GenerateBaseConstructorCall(baseConstructor, specifyParameterTypes, context);
                             baseConstructorCallWasGenerated = true;
@@ -271,7 +297,7 @@ namespace GenerateRefAssemblySource
             {
                 foreach (var interfaceMember in FilterAndSortTypeMembers(
                     type.AllInterfaces
-                        .Except<INamedTypeSymbol>(type.BaseType?.AllInterfaces ?? ImmutableArray<INamedTypeSymbol>.Empty, SymbolEqualityComparer.Default)
+                        .Except<INamedTypeSymbol>(generatedBaseType?.AllInterfaces ?? ImmutableArray<INamedTypeSymbol>.Empty, SymbolEqualityComparer.Default)
                         .Where(MetadataFacts.IsVisibleOutsideAssembly)
                         .SelectMany(i => i.GetMembers())
                         .Where(m => !generatedMembers.Contains(type.FindImplementationForInterfaceMember(m)!))))
