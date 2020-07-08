@@ -53,10 +53,15 @@ namespace GenerateRefAssemblySource
             WriteAttributes(attributes, target, new GenerationContext(writer, currentNamespace: null));
         }
 
-        private static void WriteAttributes(IEnumerable<AttributeData> attributes, string? target, GenerationContext context)
+        private static void WriteAttributes(IEnumerable<AttributeData> attributes, string? target, GenerationContext context, bool onlyWriteAttributeUsageAttribute = false)
         {
             foreach (var attribute in attributes.OrderBy(a => a.AttributeClass, NamespaceOrTypeFullNameComparer.Instance))
             {
+                if (onlyWriteAttributeUsageAttribute && !MetadataFacts.IsAttributeUsageAttribute(attribute.AttributeClass))
+                {
+                    continue;
+                }
+
                 context.Writer.Write('[');
 
                 if (target is not null)

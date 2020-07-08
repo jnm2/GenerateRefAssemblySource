@@ -22,36 +22,16 @@ namespace GenerateRefAssemblySource
         {
             GenerateAssemblyAttributes(assembly, fileSystem);
             GenerateModuleAttributes(assembly, fileSystem);
-            VisitNamespace(assembly.GlobalNamespace, fileSystem);
-        }
 
-        private void VisitNamespace(INamespaceSymbol @namespace, IProjectFileSystem fileSystem)
-        {
-            foreach (var type in @namespace.GetTypeMembers())
-            {
-                if (type.DeclaredAccessibility == Accessibility.Public)
-                    VisitType(type, fileSystem);
-            }
+            var typeDeclarationAnalysis = new TypeDeclarationAnalysis(assembly);
 
-            foreach (var containedNamespace in @namespace.GetNamespaceMembers())
+            foreach (var (type, reason) in typeDeclarationAnalysis.ReasonsByType)
             {
-                VisitNamespace(containedNamespace, fileSystem);
+                GenerateType(type, reason, typeDeclarationAnalysis, fileSystem);
             }
         }
 
-        private void VisitType(INamedTypeSymbol type, IProjectFileSystem fileSystem)
-        {
-            var externallyVisibleContainedTypes = type.GetTypeMembers().RemoveAll(t => !MetadataFacts.IsVisibleOutsideAssembly(t));
-
-            GenerateType(type, fileSystem, declareAsPartial: externallyVisibleContainedTypes.Any());
-
-            foreach (var containedType in externallyVisibleContainedTypes)
-            {
-                VisitType(containedType, fileSystem);
-            }
-        }
-
-        private void GenerateType(INamedTypeSymbol type, IProjectFileSystem fileSystem, bool declareAsPartial)
+        private void GenerateType(INamedTypeSymbol type, TypeDeclarationReason reason, TypeDeclarationAnalysis typeDeclarationAnalysis, IProjectFileSystem fileSystem)
         {
             using var textWriter = fileSystem.CreateText(GetPathForType(type));
             using var writer = new IndentedTextWriter(textWriter);
@@ -77,9 +57,19 @@ namespace GenerateRefAssemblySource
             }
 
             var filteredAttributes = type.GetAttributes().Where(a => a.AttributeClass?.HasFullName("System", "Reflection", "DefaultMemberAttribute") != true);
-            WriteAttributes(filteredAttributes, target: null, context);
 
-            WriteAccessibility(type.DeclaredAccessibility, writer);
+            if ((reason & (TypeDeclarationReason.ExternallyVisible | TypeDeclarationReason.DeclaresUsedAttribute)) != 0)
+            {
+                WriteAttributes(
+                    filteredAttributes,
+                    target: null,
+                    context,
+                    onlyWriteAttributeUsageAttribute: (reason & TypeDeclarationReason.ExternallyVisible) == 0);
+            }
+
+            WriteAccessibility(type.DeclaredAccessibility, reason, writer);
+
+            var declareAsPartial = type.GetTypeMembers().Any(typeDeclarationAnalysis.ReasonsByType.ContainsKey);
 
             if (type.TypeKind == TypeKind.Delegate)
             {
@@ -117,7 +107,7 @@ namespace GenerateRefAssemblySource
                 writer.WriteLine('{');
                 writer.Indent++;
 
-                WriteTypeMembers(type, context);
+                WriteTypeMembers(type, typeDeclarationAnalysis, context);
 
                 writer.Indent--;
                 writer.WriteLine('}');
@@ -149,7 +139,7 @@ namespace GenerateRefAssemblySource
                 .Select(m => m.Member);
         }
 
-        private void WriteTypeMembers(INamedTypeSymbol type, GenerationContext context)
+        private void WriteTypeMembers(INamedTypeSymbol type, TypeDeclarationAnalysis typeDeclarationAnalysis, GenerationContext context)
         {
             var baseConstructorToCall = ((IMethodSymbol Constructor, bool SpecifyParameterTypes)?)null;
 
@@ -177,6 +167,12 @@ namespace GenerateRefAssemblySource
                 {
                     if (!MetadataFacts.IsVisibleOutsideAssembly(m))
                     {
+                        if (m is IMethodSymbol { MethodKind: MethodKind.Constructor } constructor
+                            && typeDeclarationAnalysis.IsUsedAttributeConstructor(constructor))
+                        {
+                            return true;
+                        }
+
                         var isOverrideRequired =
                             options.GenerateRequiredProtectedOverridesInSealedClasses
                             && MetadataFacts.GetOverriddenMember(m) is { IsAbstract: true } overridden
@@ -209,7 +205,7 @@ namespace GenerateRefAssemblySource
                     WriteAttributes(method.GetReturnTypeAttributes(), target: "return", context);
 
                 if (!(member.DeclaredAccessibility == Accessibility.Public && type.TypeKind == TypeKind.Interface))
-                    WriteAccessibility(member.DeclaredAccessibility, context.Writer);
+                    WriteAccessibility(member.DeclaredAccessibility, TypeDeclarationReason.ExternallyVisible, context.Writer);
 
                 if (member.Kind != SymbolKind.Field)
                 {
@@ -404,7 +400,7 @@ namespace GenerateRefAssemblySource
                 {
                     if (!asExplicitImplementation && property.GetMethod.DeclaredAccessibility != property.DeclaredAccessibility)
                     {
-                        WriteAccessibility(property.GetMethod.DeclaredAccessibility, context.Writer);
+                        WriteAccessibility(property.GetMethod.DeclaredAccessibility, TypeDeclarationReason.ExternallyVisible, context.Writer);
                         context.Writer.Write(' ');
                     }
 
@@ -417,7 +413,7 @@ namespace GenerateRefAssemblySource
                 {
                     if (!asExplicitImplementation && property.SetMethod.DeclaredAccessibility != property.DeclaredAccessibility)
                     {
-                        WriteAccessibility(property.SetMethod.DeclaredAccessibility, context.Writer);
+                        WriteAccessibility(property.SetMethod.DeclaredAccessibility, TypeDeclarationReason.ExternallyVisible, context.Writer);
                         context.Writer.Write(' ');
                     }
 
@@ -751,14 +747,24 @@ namespace GenerateRefAssemblySource
             if (multiline) context.Writer.Indent--;
         }
 
-        private static void WriteAccessibility(Accessibility accessibility, TextWriter writer)
+        private static void WriteAccessibility(Accessibility accessibility, TypeDeclarationReason reason, TextWriter writer)
         {
-            writer.Write(accessibility switch
-            {
-                Accessibility.Public => "public ",
-                Accessibility.Protected => "protected ",
-                Accessibility.ProtectedOrInternal => "protected "
-            });
+            writer.Write(reason.HasFlag(TypeDeclarationReason.ExternallyVisible)
+                ? accessibility switch
+                {
+                    Accessibility.Public => "public ",
+                    Accessibility.Protected => "protected ",
+                    Accessibility.ProtectedOrInternal => "protected ",
+                }
+                : accessibility switch
+                {
+                    Accessibility.Public => "public ",
+                    Accessibility.Protected => "protected ",
+                    Accessibility.ProtectedOrInternal => "protected internal ",
+                    Accessibility.ProtectedAndInternal => "private protected ",
+                    Accessibility.Internal => "internal ",
+                    Accessibility.Private => "private ",
+                });
         }
 
         private static string GetPathForType(INamedTypeSymbol type)

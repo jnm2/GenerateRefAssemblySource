@@ -178,6 +178,22 @@ namespace GenerateRefAssemblySource
             };
         }
 
+        public static bool IsAttributeUsageAttribute(ITypeSymbol? type)
+        {
+            return type is
+            {
+                Name: nameof(AttributeUsageAttribute),
+                ContainingSymbol: INamespaceSymbol
+                {
+                    Name: nameof(System),
+                    ContainingSymbol: INamespaceSymbol
+                    {
+                        IsGlobalNamespace: true
+                    }
+                }
+            };
+        }
+
         public static bool IsPrimitiveType(ITypeSymbol type)
         {
             switch (type.SpecialType)
