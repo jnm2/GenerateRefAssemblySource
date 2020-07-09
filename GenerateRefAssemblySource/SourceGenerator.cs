@@ -84,10 +84,16 @@ namespace GenerateRefAssemblySource
             {
                 if (type.TypeKind == TypeKind.Class)
                 {
-                    if (type.IsAbstract)
-                        writer.Write(type.IsSealed ? "static " : "abstract ");
-                    else if (type.IsSealed)
+                    if (type.IsAbstract && type.IsSealed)
+                        writer.Write("static ");
+
+                    if (MetadataFacts.HidesBaseMember(type))
+                        writer.Write("new ");
+
+                    if (type.IsSealed)
                         writer.Write("sealed ");
+                    else if (type.IsAbstract)
+                        writer.Write("abstract ");
                 }
 
                 WriteContainerTypeHeader(type, declareAsPartial, context);
