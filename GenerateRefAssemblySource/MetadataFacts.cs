@@ -316,8 +316,15 @@ namespace GenerateRefAssemblySource
 
         public static bool CanAccessType(IAssemblySymbol assembly, string fullyQualifiedMetadataName)
         {
-            if (assembly.GetTypeByMetadataName(fullyQualifiedMetadataName) is not null)
-                return true;
+            return GetFirstTypeAccessibleToAssembly(assembly, fullyQualifiedMetadataName) is not null;
+        }
+
+        public static INamedTypeSymbol? GetFirstTypeAccessibleToAssembly(IAssemblySymbol assembly, string fullyQualifiedMetadataName)
+        {
+            {
+                if (assembly.GetTypeByMetadataName(fullyQualifiedMetadataName) is { } type)
+                    return type;
+            }
 
             foreach (var module in assembly.Modules)
             {
@@ -328,13 +335,16 @@ namespace GenerateRefAssemblySource
                         if (type.ContainingType is not null)
                             throw new NotImplementedException("Check visibility of nested type");
 
-                        return type.DeclaredAccessibility == Accessibility.Public
-                            || (type.DeclaredAccessibility == Accessibility.Internal && referencedAssembly.GivesAccessTo(assembly));
+                        if (type.DeclaredAccessibility == Accessibility.Public
+                            || (type.DeclaredAccessibility == Accessibility.Internal && referencedAssembly.GivesAccessTo(assembly)))
+                        {
+                            return type;
+                        }
                     }
                 }
             }
 
-            return false;
+            return null;
         }
     }
 }

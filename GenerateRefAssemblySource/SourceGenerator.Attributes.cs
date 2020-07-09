@@ -27,7 +27,8 @@ namespace GenerateRefAssemblySource
 
         private void GenerateAssemblyAttributes(IAssemblySymbol assembly, IProjectFileSystem fileSystem)
         {
-            var assemblyAttributes = assembly.GetAttributes();
+            var assemblyAttributes = assembly.GetAttributes()
+                .AddRange(PseudoCustomAttributeFacts.GenerateApiAttributes(assembly));
 
             if (options.RemoveAssemblySigningAttributes)
             {

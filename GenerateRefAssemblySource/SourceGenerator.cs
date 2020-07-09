@@ -56,7 +56,9 @@ namespace GenerateRefAssemblySource
                 writer.Indent++;
             }
 
-            var filteredAttributes = type.GetAttributes().Where(a => a.AttributeClass?.HasFullName("System", "Reflection", "DefaultMemberAttribute") != true);
+            var filteredAttributes = type.GetAttributes()
+                .AddRange(PseudoCustomAttributeFacts.GenerateApiAttributes(type))
+                .Where(a => a.AttributeClass?.HasFullName("System", "Reflection", "DefaultMemberAttribute") != true);
 
             if ((reason & (TypeDeclarationReason.ExternallyVisible | TypeDeclarationReason.DeclaresUsedAttribute)) != 0)
             {

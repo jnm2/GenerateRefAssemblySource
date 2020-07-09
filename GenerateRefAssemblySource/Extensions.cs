@@ -26,5 +26,10 @@ namespace GenerateRefAssemblySource
                 ? instance[0..^value.Length]
                 : instance;
         }
+
+        public static ImmutableArray<T> EmptyIfDefault<T>(this ImmutableArray<T> instance)
+        {
+            return instance.IsDefault ? ImmutableArray<T>.Empty : instance;
+        }
     }
 }
