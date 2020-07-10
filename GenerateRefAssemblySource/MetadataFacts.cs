@@ -3,6 +3,8 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace GenerateRefAssemblySource
 {
@@ -345,6 +347,13 @@ namespace GenerateRefAssemblySource
             }
 
             return null;
+        }
+
+        public static (MethodImplAttributes, MethodCodeType) GetImplementationAttributes(IMethodSymbol methodSymbol)
+        {
+            var attributes = InternalAccessUtils.GetImplementationAttributes(methodSymbol);
+
+            return (attributes & ~MethodImplAttributes.CodeTypeMask, (MethodCodeType)(attributes & MethodImplAttributes.CodeTypeMask));
         }
     }
 }

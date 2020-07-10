@@ -232,16 +232,21 @@ namespace GenerateRefAssemblySource
                     context.Writer.WriteLine(")]");
                 }
 
-                WriteAttributes(member.GetAttributes(), target: null, context);
+                var attributes = member.GetAttributes().AddRange(PseudoCustomAttributeFacts.GenerateApiAttributes(member));
+                WriteAttributes(attributes, target: null, context);
+
                 if (member is IMethodSymbol method)
                     WriteAttributes(method.GetReturnTypeAttributes(), target: "return", context);
 
                 if (!(member.DeclaredAccessibility == Accessibility.Public && type.TypeKind == TypeKind.Interface))
                     WriteAccessibility(member.DeclaredAccessibility, TypeDeclarationReason.ExternallyVisible, context.Writer);
 
+                var asExtern = member.IsExtern || type is { IsComImport: true, TypeKind: TypeKind.Class };
+
                 if (member.Kind != SymbolKind.Field)
                 {
                     if (member.IsStatic) context.Writer.Write("static ");
+                    if (asExtern) context.Writer.Write("extern ");
                     if (MetadataFacts.HidesBaseMember(member)) context.Writer.Write("new ");
                     if (member.IsVirtual) context.Writer.Write("virtual ");
                     if (member.IsAbstract && type.TypeKind != TypeKind.Interface) context.Writer.Write("abstract ");
@@ -274,7 +279,7 @@ namespace GenerateRefAssemblySource
                             baseConstructorCallWasGenerated = true;
                         }
 
-                        WriteBody(context, GetBodyType(m, asExplicitImplementation: false));
+                        WriteBody(context, GetBodyType(m, asExplicitImplementation: false, asExtern));
                         context.Writer.WriteLine();
                         break;
 
@@ -536,10 +541,11 @@ namespace GenerateRefAssemblySource
             context.Writer.Indent--;
         }
 
-        private GeneratedBodyType GetBodyType(IMethodSymbol method, bool asExplicitImplementation)
+        private GeneratedBodyType GetBodyType(IMethodSymbol method, bool asExplicitImplementation, bool asExtern = false)
         {
             return
-                (!asExplicitImplementation && method.IsAbstract)
+                asExtern
+                || (!asExplicitImplementation && method.IsAbstract)
                 || (method.MethodKind is MethodKind.PropertyGet or MethodKind.PropertySet && options.BodyOptions.UseAutoProperties) ? GeneratedBodyType.None :
                 method.ReturnsVoid ? options.BodyOptions.RequiredBodyWithVoidReturn :
                 options.BodyOptions.RequiredBodyWithNonVoidReturn;

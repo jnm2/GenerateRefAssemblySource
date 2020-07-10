@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace GenerateRefAssemblySource
 {
@@ -20,6 +21,9 @@ namespace GenerateRefAssemblySource
         DllImportAttribute          method                          Not API
         PreserveSigAttribute        method                          Not API
         TypeForwardedToAttribute    assembly                        TODO
+
+        Not a runtime pseudo-custom attribute but the C# language equivalent:
+        MethodImplAttribute         method, constructor             Handled here. Needed to avoid warnings when using extern.
         */
 
         public static IEnumerable<AttributeData> GenerateApiAttributes(IAssemblySymbol assembly)
@@ -34,6 +38,53 @@ namespace GenerateRefAssemblySource
         {
             if (type.IsComImport && TryCreateAttributeData(type, "System.Runtime.InteropServices.ComImportAttribute") is { } data)
                 yield return data;
+        }
+
+        public static IEnumerable<AttributeData> GenerateApiAttributes(IMethodSymbol method)
+        {
+            var (options, codeType) = MetadataFacts.GetImplementationAttributes(method);
+            if (options == 0 & codeType == 0) yield break;
+
+            var attributeClass = MetadataFacts.GetFirstTypeAccessibleToAssembly(
+                method.ContainingAssembly,
+                "System.Runtime.CompilerServices.MethodImplAttribute");
+
+            if (attributeClass is null) yield break;
+
+            var attributeConstructor = attributeClass.InstanceConstructors.FirstOrDefault(c =>
+                c.Parameters.Length == 1
+                && c.Parameters[0].Type is { TypeKind: TypeKind.Enum } type
+                && type.HasFullName("System", "Runtime", "CompilerServices", "MethodImplOptions"));
+
+            if (attributeConstructor is null) yield break;
+
+            var codeTypeEnum = MetadataFacts.GetFirstTypeAccessibleToAssembly(
+                method.ContainingAssembly,
+                "System.Runtime.CompilerServices.MethodCodeType");
+
+            if (codeTypeEnum is null) yield break;
+
+            var constructorArguments = ImmutableArray.Create(
+                InternalAccessUtils.CreateTypedConstant(attributeConstructor.Parameters.Single().Type, TypedConstantKind.Enum, (int)options));
+
+            var namedArguments = codeType == 0
+                ? ImmutableArray<KeyValuePair<string, TypedConstant>>.Empty
+                : ImmutableArray.Create(KeyValuePair.Create(
+                    nameof(MethodImplAttribute.MethodCodeType),
+                    InternalAccessUtils.CreateTypedConstant(codeTypeEnum, TypedConstantKind.Enum, (int)codeType)));
+
+            yield return new SynthesizedAttributeData(attributeClass, attributeConstructor, constructorArguments, namedArguments);
+        }
+
+        public static IEnumerable<AttributeData> GenerateApiAttributes(ISymbol symbol)
+        {
+            return symbol switch
+            {
+                IAssemblySymbol assembly => GenerateApiAttributes(assembly),
+                INamedTypeSymbol type => GenerateApiAttributes(type),
+                IMethodSymbol method => GenerateApiAttributes(method),
+                _ => Enumerable.Empty<AttributeData>(),
+            };
         }
 
         private static AttributeData? TryCreateAttributeData(ISymbol symbol, string fullyQualifiedMetadataName)
