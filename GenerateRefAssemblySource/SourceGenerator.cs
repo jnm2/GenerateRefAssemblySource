@@ -766,6 +766,14 @@ namespace GenerateRefAssemblySource
                 if (!asExplicitImplementation)
                     WriteAttributes(parameter.GetAttributes(), target: null, context);
 
+                context.Writer.Write(parameter.RefKind switch
+                {
+                    RefKind.Ref => "ref ",
+                    RefKind.Out => "out ",
+                    RefKind.In => "in ",
+                    _ => null,
+                });
+
                 context.WriteTypeReference(parameter.Type);
                 context.Writer.Write(' ');
                 context.WriteIdentifier(parameter.Name);
