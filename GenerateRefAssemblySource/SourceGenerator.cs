@@ -213,6 +213,13 @@ namespace GenerateRefAssemblySource
                         if (!isOverrideRequired) return false;
                     }
 
+                    if (type.IsComImport
+                        && type.TypeKind == TypeKind.Class
+                        && m is IMethodSymbol { MethodKind: MethodKind.Constructor, Parameters: { IsEmpty: true } })
+                    {
+                        return false;
+                    }
+
                     var isStructDefaultConstructor = type.TypeKind == TypeKind.Struct && m is IMethodSymbol { MethodKind: MethodKind.Constructor, Parameters: { IsEmpty: true } };
 
                     if (m.IsImplicitlyDeclared != isStructDefaultConstructor)
