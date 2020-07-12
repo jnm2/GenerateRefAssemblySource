@@ -20,10 +20,13 @@ namespace GenerateRefAssemblySource
             var dllFilePaths = Directory.GetFiles(sourceFolder, "*.dll");
 
             var compilation = CSharpCompilation.Create(
-                assemblyName: string.Empty,
+                assemblyName: "Dummy compilation",
                 syntaxTrees: null,
                 dllFilePaths.Select(path => MetadataReference.CreateFromFile(path)),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, metadataImportOptions: MetadataImportOptions.Public));
+
+            if (compilation.GetDiagnostics() is { IsEmpty: false } diagnostics)
+                throw new NotImplementedException(string.Join(Environment.NewLine, diagnostics));
 
             var projectsByAssemblyName = new Dictionary<string, (Guid Id, string FullPath)>();
 
