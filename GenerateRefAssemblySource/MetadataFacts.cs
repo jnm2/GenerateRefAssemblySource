@@ -84,18 +84,11 @@ namespace GenerateRefAssemblySource
 
                 case Accessibility.Protected:
                 case Accessibility.ProtectedOrInternal:
-                    return IsVisibleOutsideAssembly(typeMember.ContainingType!) && IsInheritable(typeMember.ContainingType!);
+                    return IsVisibleOutsideAssembly(typeMember.ContainingType!) && !typeMember.ContainingType!.IsSealed;
 
                 default:
                     return false;
             }
-        }
-
-        public static bool IsInheritable(INamedTypeSymbol type)
-        {
-            return !type.IsSealed && type.GetMembers(WellKnownMemberNames.InstanceConstructorName)
-                .OfType<IMethodSymbol>()
-                .Any(IsVisibleToDerivedTypes);
         }
 
         public static bool IsVisibleToDerivedTypes(IMethodSymbol method)

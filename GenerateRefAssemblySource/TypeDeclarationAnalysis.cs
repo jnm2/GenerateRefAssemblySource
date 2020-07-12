@@ -66,7 +66,7 @@ namespace GenerateRefAssemblySource
                 switch (member.DeclaredAccessibility)
                 {
                     case Accessibility.Public:
-                    case Accessibility.Protected or Accessibility.ProtectedOrInternal when MetadataFacts.IsInheritable(type):
+                    case Accessibility.Protected or Accessibility.ProtectedOrInternal when !type.IsSealed:
                         break;
 
                     default:
