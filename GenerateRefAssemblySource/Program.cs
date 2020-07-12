@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 
 namespace GenerateRefAssemblySource
 {
@@ -19,10 +21,21 @@ namespace GenerateRefAssemblySource
 
             var dllFilePaths = Directory.GetFiles(sourceFolder, "*.dll");
 
+            var references = dllFilePaths
+                .Where(path =>
+                {
+                    using var stream = File.OpenRead(path);
+                    using var peReader = new PEReader(stream);
+
+                    return peReader.GetMetadataReader().IsAssembly;
+                })
+                .Select(path => MetadataReference.CreateFromFile(path))
+                .ToImmutableArray();
+
             var compilation = CSharpCompilation.Create(
                 assemblyName: "Dummy compilation",
                 syntaxTrees: null,
-                dllFilePaths.Select(path => MetadataReference.CreateFromFile(path)),
+                references,
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, metadataImportOptions: MetadataImportOptions.Public));
 
             if (compilation.GetDiagnostics() is { IsEmpty: false } diagnostics)
