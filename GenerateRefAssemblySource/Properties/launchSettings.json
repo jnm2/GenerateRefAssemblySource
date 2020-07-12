@@ -2,8 +2,8 @@
   "profiles": {
     "GenerateRefAssemblySource": {
       "commandName": "Project",
-      "commandLineArgs": "\"C:\\Users\\Joseph\\Desktop\\.NETFramework\\v3.5\"",
-      "workingDirectory": "C:\\Users\\Joseph\\Desktop\\genrefsource"
+      "commandLineArgs": "\"C:\\Users\\Joseph\\Desktop\\refinput\\17116\"",
+      "workingDirectory": "C:\\Users\\Joseph\\Desktop\\refoutput\\17116"
     }
   }
 }
