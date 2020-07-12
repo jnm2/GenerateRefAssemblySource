@@ -103,13 +103,28 @@ namespace GenerateRefAssemblySource
                 {
                     context.Writer.Write('(');
 
-                    var isFirst = true;
-
-                    foreach (var value in attribute.ConstructorArguments)
+                    for (var i = 0; i < attribute.ConstructorArguments.Length; i++)
                     {
-                        if (isFirst) isFirst = false; else context.Writer.Write(", ");
+                        if (i != 0) context.Writer.Write(", ");
+
+                        var value = attribute.ConstructorArguments[i];
+
+                        if (value.Kind == TypedConstantKind.Primitive
+                            && value.Value is 0 or (short)0 or (ushort)0 or (byte)0 or (sbyte)0
+                            && attribute.AttributeClass!.InstanceConstructors.Any(c =>
+                                c.Parameters.ElementAtOrDefault(i) is { } p
+                                && CanImplicitlyConvertFromZeroLiteralSyntax(p.Type)
+                                && !SymbolEqualityComparer.Default.Equals(p.Type, value.Type)))
+                        {
+                            context.Writer.Write('(');
+                            context.WriteTypeReference(value.Type);
+                            context.Writer.Write(')');
+                        }
+
                         context.WriteTypedConstant(value);
                     }
+
+                    var isFirst = attribute.ConstructorArguments.IsEmpty;
 
                     foreach (var (name, value) in attribute.NamedArguments)
                     {
@@ -125,6 +140,23 @@ namespace GenerateRefAssemblySource
 
                 context.Writer.WriteLine(']');
             }
+        }
+
+        private static bool CanImplicitlyConvertFromZeroLiteralSyntax(ITypeSymbol type)
+        {
+            return type.TypeKind == TypeKind.Enum || type.SpecialType is
+                SpecialType.System_Int32
+                or SpecialType.System_UInt32
+                or SpecialType.System_Int64
+                or SpecialType.System_UInt64
+                or SpecialType.System_Int16
+                or SpecialType.System_UInt16
+                or SpecialType.System_Byte
+                or SpecialType.System_SByte
+                or SpecialType.System_Single
+                or SpecialType.System_Double
+                or SpecialType.System_Decimal
+                or SpecialType.System_Char;
         }
     }
 }
