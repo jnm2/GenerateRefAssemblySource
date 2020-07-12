@@ -12,8 +12,10 @@ namespace GenerateRefAssemblySource
 {
     public static class Program
     {
-        public static void Main(string[] args)
+        public static int Main(string[] args)
         {
+            const string targetFramework = "net35";
+
             var sourceFolder = args.Single();
             var outputDirectory = Directory.GetCurrentDirectory();
 
@@ -21,7 +23,7 @@ namespace GenerateRefAssemblySource
 
             var dllFilePaths = Directory.GetFiles(sourceFolder, "*.dll");
 
-            var references = dllFilePaths
+            var sourceReferences = dllFilePaths
                 .Where(path =>
                 {
                     using var stream = File.OpenRead(path);
@@ -35,28 +37,26 @@ namespace GenerateRefAssemblySource
             var compilation = CSharpCompilation.Create(
                 assemblyName: "Dummy compilation",
                 syntaxTrees: null,
-                references,
+                sourceReferences,
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, metadataImportOptions: MetadataImportOptions.Public));
 
             if (compilation.GetDiagnostics() is { IsEmpty: false } diagnostics)
                 throw new NotImplementedException(string.Join(Environment.NewLine, diagnostics));
 
+            var coreLibrary = compilation.GetSpecialType(SpecialType.System_Object).ContainingAssembly;
+            if (coreLibrary.Name == "<Missing Core Assembly>")
+            {
+                Console.WriteLine("No core library (defining System.Object) was provided as a source assembly or lib assembly.");
+                return 1;
+            }
+
+            var isDefiningTargetFramework = sourceReferences.Contains(compilation.GetMetadataReference(coreLibrary));
+
+            using (var writer = File.CreateText(Path.Join(outputDirectory, "Directory.Build.props")))
+                WriteDirectoryBuildProps(writer, isDefiningTargetFramework);
+
             var projectsByAssemblyName = new Dictionary<string, (Guid Id, string FullPath)>();
 
-            File.WriteAllText(
-                Path.Join(outputDirectory, "Directory.Build.props"),
-@"<Project>
-
-  <PropertyGroup>
-    <ProduceOnlyReferenceAssembly>true</ProduceOnlyReferenceAssembly>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
-    <NoStdLib>true</NoStdLib>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-  </PropertyGroup>
-
-</Project>
-");
             var referencedAssemblies = compilation.Assembly.Modules.Single().ReferencedAssemblySymbols;
 
             var graph = referencedAssemblies.ToDictionary(
@@ -85,7 +85,7 @@ namespace GenerateRefAssemblySource
                         ? assembly.GetMetadata()?.GetModules().Single().GetMetadataReader().MetadataVersion
                         : null;
 
-                    WriteProjectFile(writer, assemblyReferences, projectReferences, runtimeMetadataVersion, publicSignKeyPath);
+                    WriteProjectFile(writer, targetFramework, assemblyReferences, projectReferences, runtimeMetadataVersion, publicSignKeyPath);
                 }
 
                 projectsByAssemblyName.Add(assembly.Name, (Guid.NewGuid(), fileSystem.GetPath(projectFileName)));
@@ -106,20 +106,47 @@ namespace GenerateRefAssemblySource
                 slnWriter.WriteProjectStart(sdkCsprojProjectType, name, Path.GetRelativePath(outputDirectory, fullPath), id);
                 slnWriter.WriteProjectEnd();
             }
+
+            return 0;
+        }
+
+        private static void WriteDirectoryBuildProps(TextWriter writer, bool isDefiningTargetFramework)
+        {
+            writer.Write(
+@"<Project>
+
+  <PropertyGroup>
+    <ProduceOnlyReferenceAssembly>true</ProduceOnlyReferenceAssembly>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>");
+
+            if (isDefiningTargetFramework)
+            {
+                writer.Write(@"
+    <NoStdLib>true</NoStdLib>");
+            }
+
+            writer.Write(@"
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+</Project>
+");
         }
 
         private static void WriteProjectFile(
             TextWriter writer,
+            string targetFramework,
             ImmutableArray<string> assemblyReferences,
             ImmutableArray<string> projectReferences,
             string? runtimeMetadataVersion,
             string? publicSignKeyPath)
         {
             writer.Write(
-@"<Project Sdk=""Microsoft.NET.Sdk"">
+$@"<Project Sdk=""Microsoft.NET.Sdk"">
 
   <PropertyGroup>
-    <TargetFramework>net35</TargetFramework>");
+    <TargetFramework>{targetFramework}</TargetFramework>");
 
             if (runtimeMetadataVersion is not null)
             {
