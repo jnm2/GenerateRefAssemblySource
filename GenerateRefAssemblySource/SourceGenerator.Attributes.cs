@@ -1,5 +1,4 @@
 ﻿using Microsoft.CodeAnalysis;
-using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -10,10 +9,7 @@ namespace GenerateRefAssemblySource
     {
         private void GenerateModuleAttributes(IAssemblySymbol assembly, IProjectFileSystem fileSystem)
         {
-            if (assembly.Modules.Count() > 1 && assembly.Modules.SelectMany(m => m.GetAttributes()).Any())
-                throw new NotImplementedException("Multiple modules with attributes");
-
-            var moduleAttributes = assembly.Modules.Single().GetAttributes();
+            var moduleAttributes = assembly.Modules.SelectMany(m => m.GetAttributes()).ToImmutableArray();
 
             if (options.RemoveUnverifiableCodeAttribute)
             {
