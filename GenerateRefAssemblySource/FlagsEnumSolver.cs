@@ -14,7 +14,17 @@ namespace GenerateRefAssemblySource
             members = enumType.GetMembers()
                 .OfType<IFieldSymbol>()
                 .Where(f => f.HasConstantValue)
-                .Select(f => (Field: f, Value: Convert.ToUInt64(f.ConstantValue)))
+                .Select(f => (Field: f, Value: unchecked(f.ConstantValue switch
+                {
+                    int n => (ulong)n,
+                    uint n => n,
+                    short n => (ulong)n,
+                    ushort n => n,
+                    long n => (ulong)n,
+                    ulong n => n,
+                    sbyte n => (ulong)n,
+                    byte n => n,
+                })))
                 .Where(m => m.Value != 0)
                 .ToImmutableArray();
         }
