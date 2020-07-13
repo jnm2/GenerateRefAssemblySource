@@ -452,6 +452,25 @@ namespace GenerateRefAssemblySource
                     Writer.Write(')');
                     break;
 
+                case TypedConstantKind.Array:
+                    Writer.Write("new ");
+                    WriteTypeReference(constant.Type);
+                    Writer.Write(" { ");
+
+                    if (constant.Values.Any())
+                    {
+                        for (int i = 0; i < constant.Values.Length; i++)
+                        {
+                            if (i != 0) Writer.Write(", ");
+                            WriteTypedConstant(constant.Values[i]);
+                        }
+
+                        Writer.Write(' ');
+                    }
+
+                    Writer.Write('}');
+                    break;
+
                 default:
                     throw new NotImplementedException(constant.Kind.ToString());
             }
