@@ -43,13 +43,28 @@ namespace GenerateRefAssemblySource
             if (compilation.GetDiagnostics() is { IsEmpty: false } diagnostics)
                 throw new NotImplementedException(string.Join(Environment.NewLine, diagnostics));
 
-            var coreLibrary = compilation.GetSpecialType(SpecialType.System_Object).ContainingAssembly;
-            if (coreLibrary.Name == "<Missing Core Assembly>")
+            var referencedAssemblies = compilation.Assembly.Modules.Single().ReferencedAssemblySymbols
+                .Select(a => (Symbol: a, TypeDeclarationAnalysis: new TypeDeclarationAnalysis(a)))
+                .ToList();
+
+            var missingAssemblies = referencedAssemblies
+                .SelectMany(a => a.TypeDeclarationAnalysis.GetReferencedAssemblies())
+                .Distinct()
+                .Where(a => compilation.GetMetadataReference(a) is null)
+                .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (missingAssemblies.Any())
             {
-                Console.WriteLine("No core library (defining System.Object) was provided as a source assembly or lib assembly.");
+                Console.Error.WriteLine("These referenced assemblies could not be found in the specified source or lib folders:");
+
+                foreach (var assembly in missingAssemblies)
+                    Console.Error.WriteLine(assembly);
+
                 return 1;
             }
 
+            var coreLibrary = compilation.GetSpecialType(SpecialType.System_Object).ContainingAssembly;
             var isDefiningTargetFramework = sourceReferences.Contains(compilation.GetMetadataReference(coreLibrary));
 
             using (var writer = File.CreateText(Path.Join(outputDirectory, "Directory.Build.props")))
@@ -57,13 +72,9 @@ namespace GenerateRefAssemblySource
 
             var projectsByAssemblyName = new Dictionary<string, (Guid Id, string FullPath)>();
 
-            var referencedAssemblies = compilation.Assembly.Modules.Single().ReferencedAssemblySymbols
-                .Select(a => (Symbol: a, TypeDeclarationAnalysis: new TypeDeclarationAnalysis(a)))
-                .ToList();
-
             var graph = referencedAssemblies.ToDictionary(
                 assembly => assembly.Symbol.Name,
-                assembly => (IEnumerable<string>)assembly.TypeDeclarationAnalysis.GetReferencedAssemblyNames());
+                assembly => assembly.TypeDeclarationAnalysis.GetReferencedAssemblies().Select(a => a.Name));
 
             var cycleEdges = GraphUtils.GetCycleEdges(graph);
 

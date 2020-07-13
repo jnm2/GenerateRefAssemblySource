@@ -10,7 +10,7 @@ namespace GenerateRefAssemblySource
         private readonly IAssemblySymbol assembly;
         private readonly Dictionary<INamedTypeSymbol, TypeDeclarationReason> reasonsByType = new (SymbolEqualityComparer.Default);
         private readonly HashSet<IMethodSymbol> usedAttributeConstructors = new(SymbolEqualityComparer.Default);
-        private readonly HashSet<string> referencedAssemblyNames = new HashSet<string>();
+        private readonly HashSet<IAssemblySymbol> referencedAssemblies = new HashSet<IAssemblySymbol>();
 
         public IReadOnlyDictionary<INamedTypeSymbol, TypeDeclarationReason> ReasonsByType => reasonsByType;
 
@@ -24,7 +24,7 @@ namespace GenerateRefAssemblySource
 
         public bool IsUsedAttributeConstructor(IMethodSymbol method) => usedAttributeConstructors.Contains(method);
 
-        public ImmutableArray<string> GetReferencedAssemblyNames() => referencedAssemblyNames.ToImmutableArray();
+        public ImmutableArray<IAssemblySymbol> GetReferencedAssemblies() => referencedAssemblies.ToImmutableArray();
 
         public TypeDeclarationAnalysis(IAssemblySymbol assembly)
         {
@@ -55,7 +55,7 @@ namespace GenerateRefAssemblySource
             if (!assembly.Equals(type.ContainingAssembly, SymbolEqualityComparer.Default))
             {
                 if (type.ContainingAssembly is not null)
-                    referencedAssemblyNames.Add(type.ContainingAssembly.Name);
+                    referencedAssemblies.Add(type.ContainingAssembly);
                 return;
             }
 
