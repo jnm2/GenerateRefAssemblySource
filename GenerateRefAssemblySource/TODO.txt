@@ -1,3 +1,2 @@
-﻿Only generate project references for generated surface
-Actually follow https://github.com/dotnet/roslyn/blob/master/docs/features/refout.md
+﻿Actually follow https://github.com/dotnet/roslyn/blob/master/docs/features/refout.md
 Perf

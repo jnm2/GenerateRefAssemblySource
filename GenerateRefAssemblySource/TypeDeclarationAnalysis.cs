@@ -5,11 +5,12 @@ using System.Collections.Immutable;
 
 namespace GenerateRefAssemblySource
 {
-    internal sealed class TypeDeclarationAnalysis
+    public sealed class TypeDeclarationAnalysis
     {
         private readonly IAssemblySymbol assembly;
         private readonly Dictionary<INamedTypeSymbol, TypeDeclarationReason> reasonsByType = new (SymbolEqualityComparer.Default);
         private readonly HashSet<IMethodSymbol> usedAttributeConstructors = new(SymbolEqualityComparer.Default);
+        private readonly HashSet<string> referencedAssemblyNames = new HashSet<string>();
 
         public IReadOnlyDictionary<INamedTypeSymbol, TypeDeclarationReason> ReasonsByType => reasonsByType;
 
@@ -22,6 +23,8 @@ namespace GenerateRefAssemblySource
         }
 
         public bool IsUsedAttributeConstructor(IMethodSymbol method) => usedAttributeConstructors.Contains(method);
+
+        public ImmutableArray<string> GetReferencedAssemblyNames() => referencedAssemblyNames.ToImmutableArray();
 
         public TypeDeclarationAnalysis(IAssemblySymbol assembly)
         {
@@ -49,8 +52,14 @@ namespace GenerateRefAssemblySource
 
         private void VisitNamedType(INamedTypeSymbol type, TypeDeclarationReason reason)
         {
+            if (!assembly.Equals(type.ContainingAssembly, SymbolEqualityComparer.Default))
+            {
+                if (type.ContainingAssembly is not null)
+                    referencedAssemblyNames.Add(type.ContainingAssembly.Name);
+                return;
+            }
+
             if (type.Kind == SymbolKind.ErrorType) return;
-            if (!assembly.Equals(type.ContainingAssembly, SymbolEqualityComparer.Default)) return;
 
             var previousReason = reasonsByType.GetValueOrDefault(type);
             if (previousReason.HasFlag(reason)) return;
@@ -60,6 +69,10 @@ namespace GenerateRefAssemblySource
 
             VisitAttributes(type.GetAttributes());
             VisitTypeParameters(type.TypeParameters);
+
+            VisitForReferencedAssemblies(type.BaseType);
+            foreach (var implementedInterface in type.Interfaces)
+                VisitForReferencedAssemblies(implementedInterface);
 
             foreach (var member in type.GetMembers())
             {
@@ -83,15 +96,21 @@ namespace GenerateRefAssemblySource
                         VisitAttributes(field.GetAttributes());
                         if (field.HasConstantValue)
                             VisitConstant(field.ConstantValue);
+
+                        VisitForReferencedAssemblies(field.Type);
                         break;
 
                     case IEventSymbol @event:
                         VisitAttributes(@event.GetAttributes());
+
+                        VisitForReferencedAssemblies(@event.Type);
                         break;
 
                     case IPropertySymbol property:
                         VisitAttributes(property.GetAttributes());
                         VisitParameters(property.Parameters);
+
+                        VisitForReferencedAssemblies(property.Type);
                         break;
 
                     case IMethodSymbol method:
@@ -105,6 +124,8 @@ namespace GenerateRefAssemblySource
                             VisitAttributes(method.GetReturnTypeAttributes());
                             VisitTypeParameters(method.TypeParameters);
                             VisitParameters(method.Parameters);
+
+                            VisitForReferencedAssemblies(method.ReturnType);
                         }
                         break;
 
@@ -117,7 +138,12 @@ namespace GenerateRefAssemblySource
         private void VisitTypeParameters(ImmutableArray<ITypeParameterSymbol> typeParameters)
         {
             foreach (var typeParameter in typeParameters)
+            {
                 VisitAttributes(typeParameter.GetAttributes());
+
+                foreach (var constraintType in typeParameter.ConstraintTypes)
+                    VisitForReferencedAssemblies(constraintType);
+            }
         }
 
         private void VisitParameters(ImmutableArray<IParameterSymbol> parameters)
@@ -127,6 +153,8 @@ namespace GenerateRefAssemblySource
                 VisitAttributes(parameter.GetAttributes());
                 if (parameter.HasExplicitDefaultValue)
                     VisitConstant(parameter.ExplicitDefaultValue);
+
+                VisitForReferencedAssemblies(parameter.Type);
             }
         }
 
@@ -178,21 +206,39 @@ namespace GenerateRefAssemblySource
 
         private void VisitConstantType(ITypeSymbol type)
         {
+            VisitNamedTypes(type, named => VisitNamedType(named, TypeDeclarationReason.ReferencedInConstant));
+        }
+
+        private void VisitForReferencedAssemblies(ITypeSymbol? type)
+        {
+            if (type is null) return;
+
+            VisitNamedTypes(type, named =>
+            {
+                if (named?.ContainingAssembly is not null && !assembly.Equals(named.ContainingAssembly, SymbolEqualityComparer.Default))
+                {
+                    referencedAssemblies.Add(named.ContainingAssembly);
+                }
+            });
+        }
+
+        private static void VisitNamedTypes(ITypeSymbol type, Action<INamedTypeSymbol> action)
+        {
             switch (type)
             {
                 case INamedTypeSymbol named:
-                    VisitNamedType(named, TypeDeclarationReason.ReferencedInConstant);
+                    action.Invoke(named);
 
                     foreach (var typeArgument in named.TypeArguments)
-                        VisitConstantType(typeArgument);
+                        VisitNamedTypes(typeArgument, action);
                     break;
 
                 case IArrayTypeSymbol array:
-                    VisitConstantType(array.ElementType);
+                    VisitNamedTypes(array.ElementType, action);
                     break;
 
                 case IPointerTypeSymbol pointer:
-                    VisitConstantType(pointer.PointedAtType);
+                    VisitNamedTypes(pointer.PointedAtType, action);
                     break;
 
                 case ITypeParameterSymbol or IDynamicTypeSymbol:

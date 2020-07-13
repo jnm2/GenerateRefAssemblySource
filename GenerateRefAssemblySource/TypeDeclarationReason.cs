@@ -3,7 +3,7 @@
 namespace GenerateRefAssemblySource
 {
     [Flags]
-    internal enum TypeDeclarationReason
+    public enum TypeDeclarationReason
     {
         ExternallyVisible = 1 << 0,
         ReferencedInConstant = 1 << 1,

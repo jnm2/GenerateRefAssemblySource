@@ -57,17 +57,17 @@ namespace GenerateRefAssemblySource
 
             var projectsByAssemblyName = new Dictionary<string, (Guid Id, string FullPath)>();
 
-            var referencedAssemblies = compilation.Assembly.Modules.Single().ReferencedAssemblySymbols;
+            var referencedAssemblies = compilation.Assembly.Modules.Single().ReferencedAssemblySymbols
+                .Select(a => (Symbol: a, TypeDeclarationAnalysis: new TypeDeclarationAnalysis(a)))
+                .ToList();
 
             var graph = referencedAssemblies.ToDictionary(
-                assembly => assembly.Name,
-                assembly => assembly.Modules
-                    .SelectMany(m => m.ReferencedAssemblies, (_, identity) => identity.Name)
-                    .Where(name => name != assembly.Name));
+                assembly => assembly.Symbol.Name,
+                assembly => (IEnumerable<string>)assembly.TypeDeclarationAnalysis.GetReferencedAssemblyNames());
 
             var cycleEdges = GraphUtils.GetCycleEdges(graph);
 
-            foreach (var assembly in referencedAssemblies)
+            foreach (var (assembly, typeDeclarationAnalysis) in referencedAssemblies)
             {
                 var fileSystem = new ProjectFileSystem(Path.Join(outputDirectory, assembly.Name));
                 var projectFileName = assembly.Name + ".csproj";
@@ -90,7 +90,7 @@ namespace GenerateRefAssemblySource
 
                 projectsByAssemblyName.Add(assembly.Name, (Guid.NewGuid(), fileSystem.GetPath(projectFileName)));
 
-                generator.Generate(assembly, fileSystem);
+                generator.Generate(assembly, typeDeclarationAnalysis, fileSystem);
             }
 
             using var slnWriter = new SlnWriter(File.CreateText(Path.Join(outputDirectory, Path.GetFileName(outputDirectory) + ".sln")));

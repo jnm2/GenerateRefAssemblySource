@@ -18,12 +18,10 @@ namespace GenerateRefAssemblySource
             this.options = options ?? throw new ArgumentNullException(nameof(options));
         }
 
-        public void Generate(IAssemblySymbol assembly, IProjectFileSystem fileSystem)
+        public void Generate(IAssemblySymbol assembly, TypeDeclarationAnalysis typeDeclarationAnalysis, IProjectFileSystem fileSystem)
         {
             GenerateAssemblyAttributes(assembly, fileSystem);
             GenerateModuleAttributes(assembly, fileSystem);
-
-            var typeDeclarationAnalysis = new TypeDeclarationAnalysis(assembly);
 
             foreach (var (type, reason) in typeDeclarationAnalysis.ReasonsByType)
             {
