@@ -3,6 +3,8 @@ using Microsoft.CodeAnalysis.CSharp;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.CommandLine;
+using System.CommandLine.Invocation;
 using System.IO;
 using System.Linq;
 using System.Reflection.Metadata;
@@ -14,40 +16,77 @@ namespace GenerateRefAssemblySource
     {
         public static int Main(string[] args)
         {
-            const string targetFramework = "net35";
+            var rootCommand = new RootCommand
+            {
+                new Argument<string>("source", "The directory containing the .dll files to generate API source for."),
+                new Option<string>(new[] { "--output", "-o" }, getDefaultValue: () => ".", "The root directory for the output."),
+                new Option<string>(new[] { "--lib", "-l" }) { Argument = { Arity = ArgumentArity.ZeroOrMore } },
+            };
 
-            var sourceFolder = args.Single();
-            var outputDirectory = Directory.GetCurrentDirectory();
+            rootCommand.Handler = CommandHandler.Create<string, string, string[]>(Run);
+
+            return rootCommand.Invoke(args);
+        }
+
+        public static int Run(string source, string output, string[] lib)
+        {
+            const string targetFramework = "net35";
 
             var generator = new SourceGenerator(GenerationOptions.RefAssembly);
 
-            var dllFilePaths = Directory.GetFiles(sourceFolder, "*.dll");
+            var sourceReferences = new List<MetadataReference>();
+            var sourceAssemblyNames = new HashSet<string>();
+            var requiredAssemblyNames = new HashSet<string>();
 
-            var sourceReferences = dllFilePaths
-                .Where(path =>
+            foreach (var sourceFile in Directory.GetFiles(source, "*.dll"))
+            {
+                using var stream = File.OpenRead(sourceFile);
+                using var peReader = new PEReader(stream);
+
+                var reader = peReader.GetMetadataReader();
+                if (!reader.IsAssembly) continue;
+
+                sourceReferences.Add(MetadataReference.CreateFromFile(sourceFile));
+
+                sourceAssemblyNames.Add(reader.GetString(reader.GetAssemblyDefinition().Name));
+
+                requiredAssemblyNames.UnionWith(reader.AssemblyReferences.Select(handle =>
+                    reader.GetString(reader.GetAssemblyReference(handle).Name)));
+            }
+
+            requiredAssemblyNames.ExceptWith(sourceAssemblyNames);
+
+            var libReferences = new List<MetadataReference>();
+
+            foreach (var assemblyName in requiredAssemblyNames)
+            {
+                foreach (var libFolder in lib)
                 {
-                    using var stream = File.OpenRead(path);
-                    using var peReader = new PEReader(stream);
-
-                    return peReader.GetMetadataReader().IsAssembly;
-                })
-                .Select(path => MetadataReference.CreateFromFile(path))
-                .ToImmutableArray();
+                    var libFilePath = Path.Join(libFolder, assemblyName + ".dll");
+                    if (File.Exists(libFilePath))
+                    {
+                        libReferences.Add(MetadataReference.CreateFromFile(libFilePath));
+                        break;
+                    }
+                }
+            }
 
             var compilation = CSharpCompilation.Create(
                 assemblyName: "Dummy compilation",
                 syntaxTrees: null,
-                sourceReferences,
+                sourceReferences.Concat(libReferences),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, metadataImportOptions: MetadataImportOptions.Public));
 
             if (compilation.GetDiagnostics() is { IsEmpty: false } diagnostics)
                 throw new NotImplementedException(string.Join(Environment.NewLine, diagnostics));
 
-            var referencedAssemblies = compilation.Assembly.Modules.Single().ReferencedAssemblySymbols
+            var sourceAssemblies = sourceReferences
+                .Select(compilation.GetAssemblyOrModuleSymbol)
+                .OfType<IAssemblySymbol>()
                 .Select(a => (Symbol: a, TypeDeclarationAnalysis: new TypeDeclarationAnalysis(a)))
                 .ToList();
 
-            var missingAssemblies = referencedAssemblies
+            var missingAssemblies = sourceAssemblies
                 .SelectMany(a => a.TypeDeclarationAnalysis.GetReferencedAssemblies())
                 .Distinct()
                 .Where(a => compilation.GetMetadataReference(a) is null)
@@ -65,22 +104,23 @@ namespace GenerateRefAssemblySource
             }
 
             var coreLibrary = compilation.GetSpecialType(SpecialType.System_Object).ContainingAssembly;
-            var isDefiningTargetFramework = sourceReferences.Contains(compilation.GetMetadataReference(coreLibrary));
+            var isDefiningTargetFramework = sourceReferences.Contains(compilation.GetMetadataReference(coreLibrary)!);
 
-            using (var writer = File.CreateText(Path.Join(outputDirectory, "Directory.Build.props")))
+            Directory.CreateDirectory(output);
+            using (var writer = File.CreateText(Path.Join(output, "Directory.Build.props")))
                 WriteDirectoryBuildProps(writer, isDefiningTargetFramework);
 
             var projectsByAssemblyName = new Dictionary<string, (Guid Id, string FullPath)>();
 
-            var graph = referencedAssemblies.ToDictionary(
+            var graph = sourceAssemblies.ToDictionary(
                 assembly => assembly.Symbol.Name,
                 assembly => assembly.TypeDeclarationAnalysis.GetReferencedAssemblies().Select(a => a.Name));
 
             var cycleEdges = GraphUtils.GetCycleEdges(graph);
 
-            foreach (var (assembly, typeDeclarationAnalysis) in referencedAssemblies)
+            foreach (var (assembly, typeDeclarationAnalysis) in sourceAssemblies)
             {
-                var fileSystem = new ProjectFileSystem(Path.Join(outputDirectory, assembly.Name));
+                var fileSystem = new ProjectFileSystem(Path.Join(output, assembly.Name));
                 var projectFileName = assembly.Name + ".csproj";
 
                 var publicSignKeyPath = assembly.Identity.HasPublicKey ? "Public.snk" : null;
@@ -90,7 +130,9 @@ namespace GenerateRefAssemblySource
                 using (var writer = fileSystem.CreateText(projectFileName))
                 {
                     var (assemblyReferences, projectReferences) = graph[assembly.Name]
-                        .Partition(name => cycleEdges.Contains((Dependent: assembly.Name, Dependency: name)));
+                        .Partition(name =>
+                            !sourceAssemblyNames.Contains(name)
+                            || cycleEdges.Contains((Dependent: assembly.Name, Dependency: name)));
 
                     var runtimeMetadataVersion = assembly.GetTypeByMetadataName("System.Object") is not null
                         ? assembly.GetMetadata()?.GetModules().Single().GetMetadataReader().MetadataVersion
@@ -104,7 +146,7 @@ namespace GenerateRefAssemblySource
                 generator.Generate(assembly, typeDeclarationAnalysis, fileSystem);
             }
 
-            using var slnWriter = new SlnWriter(File.CreateText(Path.Join(outputDirectory, Path.GetFileName(outputDirectory) + ".sln")));
+            using var slnWriter = new SlnWriter(File.CreateText(Path.Join(output, Path.GetFileName(output) + ".sln")));
 
             slnWriter.WriteHeader(
                 visualStudioVersion: new Version("16.0.28701.123"),
@@ -114,7 +156,7 @@ namespace GenerateRefAssemblySource
 
             foreach (var (name, (id, fullPath)) in projectsByAssemblyName)
             {
-                slnWriter.WriteProjectStart(sdkCsprojProjectType, name, Path.GetRelativePath(outputDirectory, fullPath), id);
+                slnWriter.WriteProjectStart(sdkCsprojProjectType, name, Path.GetRelativePath(output, fullPath), id);
                 slnWriter.WriteProjectEnd();
             }
 
