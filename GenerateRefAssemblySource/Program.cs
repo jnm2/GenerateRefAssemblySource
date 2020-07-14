@@ -31,6 +31,7 @@ namespace GenerateRefAssemblySource
         public static int Run(string source, string output, string[] lib)
         {
             const string targetFramework = "net35";
+            const bool skipApisRequiringMissingAssemblies = true;
 
             var generator = new SourceGenerator(GenerationOptions.RefAssembly);
 
@@ -90,18 +91,21 @@ namespace GenerateRefAssemblySource
                 .SelectMany(a => a.TypeDeclarationAnalysis.GetReferencedAssemblies())
                 .Distinct()
                 .Where(a => compilation.GetMetadataReference(a) is null)
-                .OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             if (missingAssemblies.Any())
             {
-                Console.Error.WriteLine("These referenced assemblies could not be found in the specified source or lib folders:");
+                var writer = skipApisRequiringMissingAssemblies ? Console.Out : Console.Error;
 
-                foreach (var assembly in missingAssemblies)
-                    Console.Error.WriteLine(assembly);
+                writer.WriteLine("These referenced assemblies could not be found in the specified source or lib folders:");
 
-                return 1;
+                foreach (var assembly in missingAssemblies.OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase))
+                    writer.WriteLine(assembly);
+
+                if (!skipApisRequiringMissingAssemblies) return 1;
             }
+
+            var missingAssemblyNames = missingAssemblies.Select(a => a.Name).ToHashSet();
 
             var coreLibrary = compilation.GetSpecialType(SpecialType.System_Object).ContainingAssembly;
             var isDefiningTargetFramework = sourceReferences.Contains(compilation.GetMetadataReference(coreLibrary)!);
@@ -130,6 +134,7 @@ namespace GenerateRefAssemblySource
                 using (var writer = fileSystem.CreateText(projectFileName))
                 {
                     var (assemblyReferences, projectReferences) = graph[assembly.Name]
+                        .Where(name => !missingAssemblyNames.Contains(name))
                         .Partition(name =>
                             !sourceAssemblyNames.Contains(name)
                             || cycleEdges.Contains((Dependent: assembly.Name, Dependency: name)));
