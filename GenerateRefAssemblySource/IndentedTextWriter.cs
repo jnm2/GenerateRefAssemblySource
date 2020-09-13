@@ -7,6 +7,9 @@ namespace GenerateRefAssemblySource
     internal sealed class IndentedTextWriter : TextWriter
     {
         private readonly TextWriter writer;
+        private readonly string indentString;
+        private readonly bool leaveOpen;
+
         private bool didLineStart;
 
         private int indent;
@@ -23,14 +26,16 @@ namespace GenerateRefAssemblySource
 
         public override Encoding Encoding => writer.Encoding;
 
-        public IndentedTextWriter(TextWriter writer)
+        public IndentedTextWriter(TextWriter writer, string indentString = "    ", bool leaveOpen = false)
         {
             this.writer = writer;
+            this.indentString = indentString;
+            this.leaveOpen = leaveOpen;
         }
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) writer.Dispose();
+            if (disposing && !leaveOpen) writer.Dispose();
             base.Dispose(disposing);
         }
 
@@ -45,7 +50,7 @@ namespace GenerateRefAssemblySource
                 didLineStart = true;
 
                 for (var i = 0; i < Indent; i++)
-                    writer.Write("    ");
+                    writer.Write(indentString);
             }
 
             writer.Write(value);

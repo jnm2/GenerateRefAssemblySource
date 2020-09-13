@@ -1,6 +1,7 @@
 ﻿using Microsoft.CodeAnalysis;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.IO;
 using System.Linq;
 
 namespace GenerateRefAssemblySource
@@ -85,23 +86,27 @@ namespace GenerateRefAssemblySource
                     continue;
                 }
 
-                context.Writer.Write('[');
+                var buffer = new StringWriter();
+                var bufferedWriter = new IndentedTextWriter(buffer);
+                var bufferedContext = context.WithWriter(bufferedWriter);
+
+                bufferedContext.Writer.Write('[');
 
                 if (target is not null)
                 {
-                    context.Writer.Write(target);
-                    context.Writer.Write(": ");
+                    bufferedContext.Writer.Write(target);
+                    bufferedContext.Writer.Write(": ");
                 }
 
-                context.WriteTypeReference(attribute.AttributeClass!, asAttribute: true);
+                bufferedContext.WriteTypeReference(attribute.AttributeClass!, asAttribute: true);
 
                 if (attribute.ConstructorArguments.Any() || attribute.NamedArguments.Any())
                 {
-                    context.Writer.Write('(');
+                    bufferedContext.Writer.Write('(');
 
                     for (var i = 0; i < attribute.ConstructorArguments.Length; i++)
                     {
-                        if (i != 0) context.Writer.Write(", ");
+                        if (i != 0) bufferedContext.Writer.Write(", ");
 
                         var value = attribute.ConstructorArguments[i];
 
@@ -112,29 +117,35 @@ namespace GenerateRefAssemblySource
                                 && CanImplicitlyConvertFromZeroLiteralSyntax(p.Type)
                                 && !SymbolEqualityComparer.Default.Equals(p.Type, value.Type)))
                         {
-                            context.Writer.Write('(');
-                            context.WriteTypeReference(value.Type);
-                            context.Writer.Write(')');
+                            bufferedContext.Writer.Write('(');
+                            bufferedContext.WriteTypeReference(value.Type);
+                            bufferedContext.Writer.Write(')');
                         }
 
-                        context.WriteTypedConstant(value);
+                        bufferedContext.WriteTypedConstant(value);
                     }
 
                     var isFirst = attribute.ConstructorArguments.IsEmpty;
 
                     foreach (var (name, value) in attribute.NamedArguments)
                     {
-                        if (isFirst) isFirst = false; else context.Writer.Write(", ");
+                        if (isFirst) isFirst = false; else bufferedContext.Writer.Write(", ");
 
-                        context.WriteIdentifier(name);
-                        context.Writer.Write(" = ");
-                        context.WriteTypedConstant(value);
+                        bufferedContext.WriteIdentifier(name);
+                        bufferedContext.Writer.Write(" = ");
+                        bufferedContext.WriteTypedConstant(value);
                     }
 
-                    context.Writer.Write(')');
+                    bufferedContext.Writer.Write(')');
                 }
 
-                context.Writer.WriteLine(']');
+                bufferedContext.Writer.WriteLine(']');
+
+                var bufferedText = buffer.ToString();
+                if (bufferedText.Contains(GenerationContext.ErrorText))
+                    context.WriteComment(bufferedText);
+                else
+                    context.Writer.Write(bufferedText);
             }
         }
 

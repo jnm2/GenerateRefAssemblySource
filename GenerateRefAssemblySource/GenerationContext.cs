@@ -8,6 +8,8 @@ namespace GenerateRefAssemblySource
 {
     internal readonly struct GenerationContext
     {
+        public const string ErrorText = "/* ERROR */";
+
         public GenerationContext(IndentedTextWriter writer, INamespaceSymbol? currentNamespace, bool isDefiningPrimitiveTypeConstant = false)
         {
             Writer = writer ?? throw new ArgumentNullException(nameof(writer));
@@ -18,6 +20,11 @@ namespace GenerateRefAssemblySource
         public IndentedTextWriter Writer { get; }
         public INamespaceSymbol? CurrentNamespace { get; }
         public bool IsDefiningPrimitiveTypeConstant { get; }
+
+        public GenerationContext WithWriter(IndentedTextWriter writer)
+        {
+            return new GenerationContext(writer, CurrentNamespace, IsDefiningPrimitiveTypeConstant);
+        }
 
         public GenerationContext WithIsDefiningPrimitiveTypeConstant(bool isDefiningPrimitiveTypeConstant)
         {
@@ -31,6 +38,12 @@ namespace GenerateRefAssemblySource
 
         public void WriteTypeReference(ITypeSymbol type, bool asAttribute = false)
         {
+            if (type.TypeKind == TypeKind.Error)
+            {
+                Writer.Write(ErrorText);
+                return;
+            }
+
             if (type.SpecialType switch
             {
                 SpecialType.System_Void => "void",
@@ -78,12 +91,6 @@ namespace GenerateRefAssemblySource
             }
             else if (type is INamedTypeSymbol named)
             {
-                if (string.IsNullOrWhiteSpace(named.Name))
-                {
-                    Writer.Write("/* ERROR */");
-                    return;
-                }
-
                 if (type.ContainingType is { })
                 {
                     WriteTypeReference(named.ContainingType);
@@ -482,6 +489,13 @@ namespace GenerateRefAssemblySource
                 Writer.Write('@');
 
             Writer.Write(name);
+        }
+
+        public void WriteComment(string commentText)
+        {
+            using var commentWriter = new IndentedTextWriter(Writer, indentString: "// ", leaveOpen: true);
+            commentWriter.Indent++;
+            commentWriter.Write(commentText);
         }
     }
 }
