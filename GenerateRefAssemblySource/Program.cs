@@ -186,6 +186,7 @@ namespace GenerateRefAssemblySource
 
             writer.Write(@"
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <NoWarn>IDE0034;IDE0060;IDE1006</NoWarn>
   </PropertyGroup>
 
 </Project>
