@@ -317,7 +317,7 @@ namespace GenerateRefAssemblySource
                 }
             }
 
-            if (type.TypeKind != TypeKind.Interface)
+            if (type.TypeKind != TypeKind.Interface && reason.HasFlag(TypeDeclarationReason.ExternallyVisible))
             {
                 foreach (var interfaceMember in FilterAndSortTypeMembers(
                     type.AllInterfaces
