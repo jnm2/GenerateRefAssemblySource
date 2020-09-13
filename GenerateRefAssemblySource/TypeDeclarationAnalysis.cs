@@ -211,15 +211,16 @@ namespace GenerateRefAssemblySource
 
         private void VisitForReferencedAssemblies(ITypeSymbol? type)
         {
-            if (type is null) return;
-
-            VisitNamedTypes(type, named =>
+            for (var current = type; current is not null; current = current.BaseType)
             {
-                if (named?.ContainingAssembly is not null && !assembly.Equals(named.ContainingAssembly, SymbolEqualityComparer.Default))
+                VisitNamedTypes(current, named =>
                 {
-                    referencedAssemblies.Add(named.ContainingAssembly);
-                }
-            });
+                    if (named?.ContainingAssembly is not null && !assembly.Equals(named.ContainingAssembly, SymbolEqualityComparer.Default))
+                    {
+                        referencedAssemblies.Add(named.ContainingAssembly);
+                    }
+                });
+            }
         }
 
         private static void VisitNamedTypes(ITypeSymbol type, Action<INamedTypeSymbol> action)
