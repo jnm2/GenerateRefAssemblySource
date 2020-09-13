@@ -159,7 +159,7 @@ namespace GenerateRefAssemblySource
 
             var sdkCsprojProjectType = new Guid("9A19103F-16F7-4668-BE54-9A1E7A4F7556");
 
-            foreach (var (name, (id, fullPath)) in projectsByAssemblyName)
+            foreach (var (name, (id, fullPath)) in projectsByAssemblyName.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase))
             {
                 slnWriter.WriteProjectStart(sdkCsprojProjectType, name, Path.GetRelativePath(output, fullPath), id);
                 slnWriter.WriteProjectEnd();
@@ -230,7 +230,7 @@ $@"<Project Sdk=""Microsoft.NET.Sdk"">
 
   <ItemGroup>");
 
-                foreach (var reference in assemblyReferences)
+                foreach (var reference in assemblyReferences.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
                 {
                     writer.Write($@"
     <Reference Include=""{reference}"" />");
@@ -246,7 +246,7 @@ $@"<Project Sdk=""Microsoft.NET.Sdk"">
 
   <ItemGroup>");
 
-                foreach (var reference in projectReferences)
+                foreach (var reference in projectReferences.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
                 {
                     writer.Write($@"
     <ProjectReference Include=""..\{reference}\{reference}.csproj"" />");
