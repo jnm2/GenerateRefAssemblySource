@@ -252,7 +252,13 @@ namespace GenerateRefAssemblySource
                 {
                     if (member.IsStatic) context.Writer.Write("static ");
                     if (asExtern) context.Writer.Write("extern ");
-                    if (MetadataFacts.HidesBaseMember(member)) context.Writer.Write("new ");
+
+                    if (member is not IMethodSymbol { MethodKind: MethodKind.UserDefinedOperator or MethodKind.Conversion }
+                        && MetadataFacts.HidesBaseMember(member))
+                    {
+                        context.Writer.Write("new ");
+                    }
+
                     if (member.IsVirtual) context.Writer.Write("virtual ");
                     if (member.IsAbstract && type.TypeKind != TypeKind.Interface) context.Writer.Write("abstract ");
                     if (member.IsSealed) context.Writer.Write("sealed ");
