@@ -87,7 +87,7 @@ namespace GenerateRefAssemblySource
                     if (type.IsAbstract && type.IsSealed)
                         writer.Write("static ");
 
-                    if (MetadataFacts.HidesBaseMember(type))
+                    if (MetadataFacts.HidesBaseMember(type, typeDeclarationAnalysis))
                         writer.Write("new ");
 
                     if (type.IsSealed)
@@ -254,7 +254,7 @@ namespace GenerateRefAssemblySource
                     if (asExtern) context.Writer.Write("extern ");
 
                     if (member is not IMethodSymbol { MethodKind: MethodKind.UserDefinedOperator or MethodKind.Conversion }
-                        && MetadataFacts.HidesBaseMember(member))
+                        && MetadataFacts.HidesBaseMember(member, typeDeclarationAnalysis))
                     {
                         context.Writer.Write("new ");
                     }
@@ -268,7 +268,7 @@ namespace GenerateRefAssemblySource
                 switch (member)
                 {
                     case IFieldSymbol f:
-                        GenerateField(f, context);
+                        GenerateField(f, typeDeclarationAnalysis, context);
                         break;
 
                     case IEventSymbol e:
@@ -351,7 +351,7 @@ namespace GenerateRefAssemblySource
             }
         }
 
-        private void GenerateField(IFieldSymbol field, GenerationContext context)
+        private void GenerateField(IFieldSymbol field, TypeDeclarationAnalysis typeDeclarationAnalysis, GenerationContext context)
         {
             if (field.IsConst)
             {
@@ -360,7 +360,7 @@ namespace GenerateRefAssemblySource
             else
             {
                 if (field.IsStatic) context.Writer.Write("static ");
-                if (MetadataFacts.HidesBaseMember(field)) context.Writer.Write("new ");
+                if (MetadataFacts.HidesBaseMember(field, typeDeclarationAnalysis)) context.Writer.Write("new ");
                 if (field.IsReadOnly) context.Writer.Write("readonly ");
                 if (field.Type.TypeKind == TypeKind.Pointer) context.Writer.Write("unsafe ");
                 if (field.IsVolatile) context.Writer.Write("volatile ");

@@ -228,7 +228,7 @@ namespace GenerateRefAssemblySource
             };
         }
 
-        public static bool HidesBaseMember(ISymbol member)
+        public static bool HidesBaseMember(ISymbol member, TypeDeclarationAnalysis typeDeclarationAnalysis)
         {
             if (member.ContainingType is null || member.IsImplicitlyDeclared || member.IsOverride) return false;
             if (member is IMethodSymbol { MethodKind: MethodKind.Constructor or MethodKind.StaticConstructor or MethodKind.Destructor }) return false;
@@ -252,7 +252,11 @@ namespace GenerateRefAssemblySource
                 {
                     foreach (var baseMember in baseType.GetMembers(member.Name))
                     {
-                        if (!IsVisibleOutsideAssembly(baseMember)) continue;
+                        if (!IsVisibleOutsideAssembly(baseMember))
+                        {
+                            if (!(baseMember is INamedTypeSymbol typeMember && typeDeclarationAnalysis.ReasonsByType.ContainsKey(typeMember)))
+                                continue;
+                        }
 
                         if (member is IMethodSymbol method && baseMember is IMethodSymbol baseMethod)
                         {
