@@ -262,7 +262,7 @@ namespace GenerateRefAssemblySource
                                 return true;
                             }
                         }
-                        else
+                        else if (baseMember is not IMethodSymbol { Arity: >= 1 })
                         {
                             return true;
                         }
