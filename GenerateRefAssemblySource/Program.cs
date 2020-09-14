@@ -159,11 +159,27 @@ namespace GenerateRefAssemblySource
 
             var sdkCsprojProjectType = new Guid("9A19103F-16F7-4668-BE54-9A1E7A4F7556");
 
-            foreach (var (name, (id, fullPath)) in projectsByAssemblyName.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase))
+            var orderedProjectsByAssemblyName = projectsByAssemblyName.OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase).ToList();
+
+            foreach (var (name, (id, fullPath)) in orderedProjectsByAssemblyName)
             {
-                slnWriter.WriteProjectStart(sdkCsprojProjectType, name, Path.GetRelativePath(output, fullPath), id);
-                slnWriter.WriteProjectEnd();
+                slnWriter.StartProject(sdkCsprojProjectType, name, Path.GetRelativePath(output, fullPath), id);
+                slnWriter.EndProject();
             }
+
+            slnWriter.StartGlobal();
+            slnWriter.StartGlobalSection("SolutionConfigurationPlatforms", SlnGlobalSectionTiming.PreSolution);
+            slnWriter.WriteGlobalSectionLine("Release|Any CPU = Release|Any CPU");
+            slnWriter.EndGlobalSection();
+
+            slnWriter.StartGlobalSection("ProjectConfigurationPlatforms", SlnGlobalSectionTiming.PostSolution);
+            foreach (var (_, (id, _)) in orderedProjectsByAssemblyName)
+            {
+                slnWriter.WriteGlobalSectionLine("{" + id.ToString().ToUpperInvariant() + "}.Release|Any CPU.ActiveCfg = Release|Any CPU");
+                slnWriter.WriteGlobalSectionLine("{" + id.ToString().ToUpperInvariant() + "}.Release|Any CPU.Build.0 = Release|Any CPU");
+            }
+            slnWriter.EndGlobalSection();
+            slnWriter.EndGlobal();
 
             return 0;
         }

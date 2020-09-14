@@ -7,6 +7,8 @@
             Header,
             Body,
             Project,
+            Global,
+            GlobalSection,
         }
     }
 }

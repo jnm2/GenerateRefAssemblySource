@@ -25,7 +25,7 @@ namespace GenerateRefAssemblySource
             state = WriterState.Body;
         }
 
-        public void WriteProjectStart(Guid projectType, string projectName, string relativePath, Guid projectId)
+        public void StartProject(Guid projectType, string projectName, string relativePath, Guid projectId)
         {
             AssertState(WriterState.Body);
             writer.Write("Project(");
@@ -40,11 +40,53 @@ namespace GenerateRefAssemblySource
             state = WriterState.Project;
         }
 
-        public void WriteProjectEnd()
+        public void EndProject()
         {
             AssertState(WriterState.Project);
             writer.WriteLine("EndProject");
             state = WriterState.Body;
+        }
+
+        public void StartGlobal()
+        {
+            AssertState(WriterState.Body);
+            writer.WriteLine("Global");
+            state = WriterState.Global;
+        }
+
+        public void EndGlobal()
+        {
+            AssertState(WriterState.Global);
+            writer.WriteLine("EndGlobal");
+            state = WriterState.Body;
+        }
+
+        public void StartGlobalSection(string name, SlnGlobalSectionTiming timing)
+        {
+            AssertState(WriterState.Global);
+            writer.Write("\tGlobalSection(");
+            writer.Write(name);
+            writer.Write(") = ");
+            writer.WriteLine(timing switch
+            {
+                SlnGlobalSectionTiming.PreSolution => "preSolution",
+                SlnGlobalSectionTiming.PostSolution => "postSolution",
+            });
+            state = WriterState.GlobalSection;
+        }
+
+        public void EndGlobalSection()
+        {
+            AssertState(WriterState.GlobalSection);
+            writer.WriteLine("\tEndGlobalSection");
+            state = WriterState.Global;
+        }
+
+        public void WriteGlobalSectionLine(string contents)
+        {
+            AssertState(WriterState.GlobalSection);
+            writer.Write("\t\t");
+            writer.WriteLine(contents);
         }
 
         private void WriteGuid(Guid value)
@@ -69,5 +111,11 @@ namespace GenerateRefAssemblySource
             if (state != requiredState)
                 throw new InvalidOperationException($"The current state is {state}, but this operation is only valid in the {requiredState} state.");
         }
+    }
+
+    public enum SlnGlobalSectionTiming
+    {
+        PreSolution,
+        PostSolution,
     }
 }
