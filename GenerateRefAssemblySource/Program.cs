@@ -31,7 +31,6 @@ namespace GenerateRefAssemblySource
         public static int Run(string source, string output, string[] lib)
         {
             const string targetFramework = "net35";
-            const bool skipApisRequiringMissingAssemblies = true;
 
             var generator = new SourceGenerator(GenerationOptions.RefAssembly);
 
@@ -95,17 +94,13 @@ namespace GenerateRefAssemblySource
 
             if (missingAssemblies.Any())
             {
-                var writer = skipApisRequiringMissingAssemblies ? Console.Out : Console.Error;
-
-                writer.WriteLine("These referenced assemblies could not be found in the specified source or lib folders:");
+                Console.Error.WriteLine("These referenced assemblies could not be found in the specified source or lib folders:");
 
                 foreach (var assembly in missingAssemblies.OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase))
-                    writer.WriteLine(assembly);
+                    Console.Error.WriteLine(assembly);
 
-                if (!skipApisRequiringMissingAssemblies) return 1;
+                return 1;
             }
-
-            var missingAssemblyNames = missingAssemblies.Select(a => a.Name).ToHashSet();
 
             var coreLibrary = compilation.GetSpecialType(SpecialType.System_Object).ContainingAssembly;
             var isDefiningTargetFramework = sourceReferences.Contains(compilation.GetMetadataReference(coreLibrary)!);
@@ -134,7 +129,6 @@ namespace GenerateRefAssemblySource
                 using (var writer = fileSystem.CreateText(projectFileName))
                 {
                     var (assemblyReferences, projectReferences) = graph[assembly.Name]
-                        .Where(name => !missingAssemblyNames.Contains(name))
                         .Partition(name =>
                             !sourceAssemblyNames.Contains(name)
                             || cycleEdges.Contains((Dependent: assembly.Name, Dependency: name)));
