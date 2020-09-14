@@ -1,6 +1,5 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -10,6 +9,9 @@ using System.IO;
 using System.Linq;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
+using System.Runtime.InteropServices;
+
+[module: DefaultCharSet(CharSet.Unicode)]
 
 namespace GenerateRefAssemblySource
 {
@@ -93,22 +95,81 @@ namespace GenerateRefAssemblySource
                 .Where(dependency => compilation.GetMetadataReference(dependency.Key) is null)
                 .ToList();
 
+            var comReferencesByDependentAssemblyName = new Dictionary<string, List<PrimaryInteropAssembly>>(StringComparer.OrdinalIgnoreCase);
+            var primaryInteropAssemblyReferences = new List<MetadataReference>();
+
             if (missingAssemblies.Any())
             {
-                Console.Error.WriteLine("These referenced assemblies could not be found in the specified source or lib folders:");
+                var cache = new PrimaryInteropAssemblyCache();
 
-                foreach (var dependentAssembliesByDependency in missingAssemblies.OrderBy(a => a.Key.Name, StringComparer.OrdinalIgnoreCase))
+                for (var i = missingAssemblies.Count - 1; i >= 0; i--)
                 {
-                    Console.Error.Write(dependentAssembliesByDependency.Key);
-                    Console.Error.Write(" (required by: ");
-                    Console.Error.Write(string.Join(", ", dependentAssembliesByDependency
-                        .Select(a => a.Symbol.Name)
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)));
-                    Console.Error.WriteLine(")");
+                    var identity = missingAssemblies[i].Key.Identity;
+                    if (cache.GetClosestVersionGreaterThanOrEqualTo(identity.Name, identity.Version) is { } primaryInteropAssembly)
+                    {
+                        var gac = GlobalAssemblyCache.TryLoad();
+                        if (gac is null) break;
+
+                        var piaPath = gac.Resolve(primaryInteropAssembly.AssemblyName);
+                        if (piaPath is not null)
+                        {
+                            primaryInteropAssemblyReferences.Add(MetadataReference.CreateFromFile(piaPath));
+
+                            var dependentAssemblies = missingAssemblies[i];
+
+                            Console.Write("Using COM primary interop assembly ");
+                            Console.Write(piaPath);
+                            Console.Error.Write(" (required by: ");
+                            Console.Error.Write(string.Join(", ", dependentAssemblies
+                                .Select(a => a.Symbol.Name)
+                                .Distinct(StringComparer.OrdinalIgnoreCase)
+                                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)));
+                            Console.Error.WriteLine(")");
+
+                            foreach (var (dependentAssembly, _) in dependentAssemblies)
+                            {
+                                if (!comReferencesByDependentAssemblyName.TryGetValue(dependentAssembly.Name, out var list))
+                                    comReferencesByDependentAssemblyName.Add(dependentAssembly.Name, list = new());
+                                list.Add(primaryInteropAssembly);
+                            }
+
+                            missingAssemblies.RemoveAt(i);
+                        }
+                    }
                 }
 
-                return 1;
+                if (missingAssemblies.Any())
+                {
+                    Console.Error.WriteLine("These referenced assemblies could not be found in the specified source or lib folders:");
+
+                    foreach (var dependentAssembliesByDependency in missingAssemblies.OrderBy(a => a.Key.Name, StringComparer.OrdinalIgnoreCase))
+                    {
+                        Console.Error.Write(dependentAssembliesByDependency.Key);
+                        Console.Error.Write(" (required by: ");
+                        Console.Error.Write(string.Join(", ", dependentAssembliesByDependency
+                            .Select(a => a.Symbol.Name)
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)));
+                        Console.Error.WriteLine(")");
+                    }
+
+                    return 1;
+                }
+            }
+
+            if (primaryInteropAssemblyReferences.Any())
+            {
+                compilation = compilation.AddReferences(primaryInteropAssemblyReferences);
+
+                diagnostics = compilation.GetDiagnostics();
+                if (diagnostics is { IsEmpty: false })
+                    throw new NotImplementedException(string.Join(Environment.NewLine, diagnostics));
+
+                sourceAssemblies = sourceReferences
+                    .Select(compilation.GetAssemblyOrModuleSymbol)
+                    .OfType<IAssemblySymbol>()
+                    .Select(a => (Symbol: a, TypeDeclarationAnalysis: new TypeDeclarationAnalysis(a)))
+                    .ToList();
             }
 
             var coreLibrary = compilation.GetSpecialType(SpecialType.System_Object).ContainingAssembly;
@@ -146,7 +207,16 @@ namespace GenerateRefAssemblySource
                         ? assembly.GetMetadata()?.GetModules().Single().GetMetadataReader().MetadataVersion
                         : null;
 
-                    WriteProjectFile(writer, targetFramework, assemblyReferences, projectReferences, runtimeMetadataVersion, publicSignKeyPath);
+                    var comReferences = comReferencesByDependentAssemblyName.GetValueOrDefault(assembly.Name)?.ToImmutableArray() ?? ImmutableArray<PrimaryInteropAssembly>.Empty;
+
+                    WriteProjectFile(
+                        writer,
+                        targetFramework,
+                        assemblyReferences.Except(comReferences.Select(r => r.AssemblyName.Name!), StringComparer.OrdinalIgnoreCase).ToImmutableArray(),
+                        comReferences,
+                        projectReferences,
+                        runtimeMetadataVersion,
+                        publicSignKeyPath);
                 }
 
                 projectsByAssemblyName.Add(assembly.Name, (Guid.NewGuid(), fileSystem.GetPath(projectFileName)));
@@ -221,6 +291,7 @@ namespace GenerateRefAssemblySource
             TextWriter writer,
             string targetFramework,
             ImmutableArray<string> assemblyReferences,
+            ImmutableArray<PrimaryInteropAssembly> comReferences,
             ImmutableArray<string> projectReferences,
             string? runtimeMetadataVersion,
             string? publicSignKeyPath)
@@ -258,6 +329,22 @@ $@"<Project Sdk=""Microsoft.NET.Sdk"">
                 {
                     writer.Write($@"
     <Reference Include=""{reference}"" />");
+                }
+
+                writer.Write(@"
+  </ItemGroup>");
+            }
+
+            if (comReferences.Any())
+            {
+                writer.Write(@"
+
+  <ItemGroup>");
+
+                foreach (var reference in comReferences.OrderBy(r => r.AssemblyName.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    writer.Write($@"
+    <COMReference Include=""{reference.AssemblyName.Name}"" Guid=""{reference.Guid}"" VersionMajor=""{reference.Version.Major}"" VersionMinor=""{reference.Version.Minor}"" />");
                 }
 
                 writer.Write(@"
