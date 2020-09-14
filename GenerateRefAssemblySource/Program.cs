@@ -151,6 +151,13 @@ namespace GenerateRefAssemblySource
                 generator.Generate(assembly, typeDeclarationAnalysis, fileSystem);
             }
 
+            WriteSolution(output, projectsByAssemblyName);
+
+            return 0;
+        }
+
+        private static void WriteSolution(string output, IEnumerable<KeyValuePair<string, (Guid Id, string FullPath)>> projectsByAssemblyName)
+        {
             using var slnWriter = new SlnWriter(File.CreateText(Path.Join(output, Path.GetFileName(output) + ".sln")));
 
             slnWriter.WriteHeader(
@@ -180,8 +187,6 @@ namespace GenerateRefAssemblySource
             }
             slnWriter.EndGlobalSection();
             slnWriter.EndGlobal();
-
-            return 0;
         }
 
         private static void WriteDirectoryBuildProps(TextWriter writer, bool isDefiningTargetFramework)
