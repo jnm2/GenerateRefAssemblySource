@@ -1,5 +1,6 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -87,17 +88,25 @@ namespace GenerateRefAssemblySource
                 .ToList();
 
             var missingAssemblies = sourceAssemblies
-                .SelectMany(a => a.TypeDeclarationAnalysis.GetReferencedAssemblies())
-                .Distinct()
-                .Where(a => compilation.GetMetadataReference(a) is null)
+                .SelectMany(a => a.TypeDeclarationAnalysis.GetReferencedAssemblies(), (from, to) => (From: from, To: to))
+                .GroupBy(dependency => dependency.To, dependency => dependency.From)
+                .Where(dependency => compilation.GetMetadataReference(dependency.Key) is null)
                 .ToList();
 
             if (missingAssemblies.Any())
             {
                 Console.Error.WriteLine("These referenced assemblies could not be found in the specified source or lib folders:");
 
-                foreach (var assembly in missingAssemblies.OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase))
-                    Console.Error.WriteLine(assembly);
+                foreach (var dependentAssembliesByDependency in missingAssemblies.OrderBy(a => a.Key.Name, StringComparer.OrdinalIgnoreCase))
+                {
+                    Console.Error.Write(dependentAssembliesByDependency.Key);
+                    Console.Error.Write(" (required by: ");
+                    Console.Error.Write(string.Join(", ", dependentAssembliesByDependency
+                        .Select(a => a.Symbol.Name)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)));
+                    Console.Error.WriteLine(")");
+                }
 
                 return 1;
             }
