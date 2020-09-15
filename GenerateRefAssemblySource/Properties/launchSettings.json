@@ -1,8 +1,12 @@
 {
   "profiles": {
-    "GenerateRefAssemblySource": {
+    "17116": {
       "commandName": "Project",
       "commandLineArgs": "\"C:\\Users\\Joseph\\Desktop\\refinput\\17116\" -o \"C:\\Users\\Joseph\\Desktop\\refoutput\\17116\" --lib \"C:\\Program Files (x86)\\Reference Assemblies\\Microsoft\\Framework\\v3.5\" --lib \"C:\\Windows\\Microsoft.NET\\Framework\\v3.5\" --lib \"C:\\Program Files (x86)\\Reference Assemblies\\Microsoft\\Framework\\v3.0\" --lib \"C:\\Windows\\Microsoft.NET\\Framework\\v3.0\" --lib \"C:\\Windows\\Microsoft.NET\\Framework\\v2.0.50727\""
+    },
+    "net35": {
+      "commandName": "Project",
+      "commandLineArgs": "\"C:\\Users\\Joseph\\Desktop\\refinput\\net35\" -o \"C:\\Users\\Joseph\\Desktop\\refoutput\\net35\""
     }
   }
 }
