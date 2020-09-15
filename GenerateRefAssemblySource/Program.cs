@@ -31,8 +31,10 @@ namespace GenerateRefAssemblySource
             return rootCommand.Invoke(args);
         }
 
-        public static int Run(string source, string output, string[] lib)
+        public static int Run(string source, string output, string[]? lib)
         {
+            lib ??= Array.Empty<string>();
+
             const string targetFramework = "net35";
 
             var generator = new SourceGenerator(GenerationOptions.RefAssembly);
