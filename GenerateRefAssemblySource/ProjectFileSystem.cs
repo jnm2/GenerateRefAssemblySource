@@ -38,7 +38,7 @@ namespace GenerateRefAssemblySource
         private Stream Create(string relativePath)
         {
             var path = GetPath(relativePath);
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             return File.Create(path);
         }
     }

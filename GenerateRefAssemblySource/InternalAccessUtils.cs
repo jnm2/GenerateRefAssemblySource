@@ -26,12 +26,12 @@ namespace GenerateRefAssemblySource
 
             createTypeConstant = Expression.Lambda<Func<ITypeSymbol, TypedConstantKind, object?, TypedConstant>>(
                 Expression.New(
-                    typeof(TypedConstant).GetConstructor(NonPublicInstanceDeclaredOnly, null, new[] { typeSymbolInternalType, typeof(TypedConstantKind), typeof(object) }, null),
+                    typeof(TypedConstant).GetConstructor(NonPublicInstanceDeclaredOnly, null, new[] { typeSymbolInternalType, typeof(TypedConstantKind), typeof(object) }, null)!,
                     Expression.Coalesce(
                         Expression.TypeAs(typeSymbolParameter, typeSymbolInternalType),
                         Expression.MakeMemberAccess(
                             Expression.Convert(typeSymbolParameter, publicTypeSymbolType),
-                            publicTypeSymbolType.GetProperty("UnderlyingTypeSymbol", NonPublicInstanceDeclaredOnly))),
+                            publicTypeSymbolType.GetProperty("UnderlyingTypeSymbol", NonPublicInstanceDeclaredOnly)!)),
                     kindParameter,
                     valueParameter),
                 typeSymbolParameter,
@@ -63,7 +63,7 @@ namespace GenerateRefAssemblySource
                         underlyingMethodSymbolProperty),
                     underlyingMethodSymbolProperty
                         .PropertyType
-                        .GetProperty(propertyName, NonPublicInstanceDeclaredOnly)),
+                        .GetProperty(propertyName, NonPublicInstanceDeclaredOnly)!),
                 parameter).Compile();
         }
     }
