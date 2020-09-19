@@ -112,7 +112,7 @@ namespace GenerateRefAssemblySource
                         var gac = GlobalAssemblyCache.TryLoad();
                         if (gac is null) break;
 
-                        var piaPath = gac.Resolve(primaryInteropAssembly.AssemblyName);
+                        var piaPath = gac.Resolve(primaryInteropAssembly.AssemblyName.FullName);
                         if (piaPath is not null)
                         {
                             primaryInteropAssemblyReferences.Add(MetadataReference.CreateFromFile(piaPath));
