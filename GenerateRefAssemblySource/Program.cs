@@ -82,9 +82,6 @@ namespace GenerateRefAssemblySource
                 sourceReferences.Concat(libReferences),
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, metadataImportOptions: MetadataImportOptions.Public));
 
-            if (compilation.GetDiagnostics() is { IsEmpty: false } diagnostics)
-                throw new NotImplementedException(string.Join(Environment.NewLine, diagnostics));
-
             var sourceAssemblies = sourceReferences
                 .Select(compilation.GetAssemblyOrModuleSymbol)
                 .OfType<IAssemblySymbol>()
@@ -98,45 +95,68 @@ namespace GenerateRefAssemblySource
                 .ToList();
 
             var comReferencesByDependentAssemblyName = new Dictionary<string, List<PrimaryInteropAssembly>>(StringComparer.OrdinalIgnoreCase);
-            var primaryInteropAssemblyReferences = new List<MetadataReference>();
+            var fullPathsToUseForReferences = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-            if (missingAssemblies.Any())
+            var compilationWithAddedReferences = compilation;
+
+            if (missingAssemblies.Any() && GlobalAssemblyCache.TryLoad() is { } gac)
             {
-                var cache = new PrimaryInteropAssemblyCache();
-
                 for (var i = missingAssemblies.Count - 1; i >= 0; i--)
                 {
                     var identity = missingAssemblies[i].Key.Identity;
-                    if (cache.GetClosestVersionGreaterThanOrEqualTo(identity.Name, identity.Version) is { } primaryInteropAssembly)
+
+                    if (gac.Resolve(identity.GetDisplayName()) is { } gacPath)
                     {
-                        var gac = GlobalAssemblyCache.TryLoad();
-                        if (gac is null) break;
+                        var metadataReference = MetadataReference.CreateFromFile(gacPath);
+                        var updatedCompilation = compilationWithAddedReferences.AddReferences(metadataReference);
+                        var attributes = ((IAssemblySymbol)updatedCompilation.GetAssemblyOrModuleSymbol(metadataReference)!).GetAttributes();
 
-                        var piaPath = gac.Resolve(primaryInteropAssembly.AssemblyName.FullName);
-                        if (piaPath is not null)
+                        var primaryInteropAssemblyAttribute = attributes.SingleOrDefault(a => a.AttributeClass!.HasFullName("System", "Runtime", "InteropServices", "PrimaryInteropAssemblyAttribute"));
+                        if (primaryInteropAssemblyAttribute is null) continue;
+
+                        var version = new Version(
+                            (int)primaryInteropAssemblyAttribute.ConstructorArguments[0].Value!,
+                            (int)primaryInteropAssemblyAttribute.ConstructorArguments[1].Value!);
+
+                        var guidAttribute = attributes.SingleOrDefault(a => a.AttributeClass!.HasFullName("System", "Runtime", "InteropServices", "GuidAttribute"));
+                        if (guidAttribute is null) continue;
+
+                        var guid = Guid.Parse((string)guidAttribute.ConstructorArguments[0].Value!);
+
+                        var primaryInteropAssembly = new PrimaryInteropAssembly(identity, guid, version);
+
+                        compilationWithAddedReferences = updatedCompilation;
+
+                        var dependentAssemblies = missingAssemblies[i];
+
+                        Console.Write("Using COM primary interop assembly ");
+                        Console.Write(gacPath);
+                        Console.Write(" (required by: ");
+                        Console.Write(string.Join(", ", dependentAssemblies
+                            .Select(a => a.Symbol.Name)
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)));
+                        Console.WriteLine(")");
+
+                        if (ComUtils.GetPrimaryInteropAssemblyName(guid, version.Major, version.Minor) is null)
                         {
-                            primaryInteropAssemblyReferences.Add(MetadataReference.CreateFromFile(piaPath));
+                            Console.WriteLine($"The primary interop assembly is for type library {guid} {version} which is unregistered, so a reference to the full GAC path will be created rather than a COMReference project item.");
 
-                            var dependentAssemblies = missingAssemblies[i];
-
-                            Console.Write("Using COM primary interop assembly ");
-                            Console.Write(piaPath);
-                            Console.Error.Write(" (required by: ");
-                            Console.Error.Write(string.Join(", ", dependentAssemblies
-                                .Select(a => a.Symbol.Name)
-                                .Distinct(StringComparer.OrdinalIgnoreCase)
-                                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)));
-                            Console.Error.WriteLine(")");
-
+                            fullPathsToUseForReferences.Add(identity.Name, gacPath);
+                        }
+                        else
+                        {
                             foreach (var (dependentAssembly, _) in dependentAssemblies)
                             {
                                 if (!comReferencesByDependentAssemblyName.TryGetValue(dependentAssembly.Name, out var list))
                                     comReferencesByDependentAssemblyName.Add(dependentAssembly.Name, list = new());
                                 list.Add(primaryInteropAssembly);
                             }
-
-                            missingAssemblies.RemoveAt(i);
                         }
+
+                        Console.WriteLine();
+
+                        missingAssemblies.RemoveAt(i);
                     }
                 }
 
@@ -159,13 +179,9 @@ namespace GenerateRefAssemblySource
                 }
             }
 
-            if (primaryInteropAssemblyReferences.Any())
+            if (compilationWithAddedReferences != compilation)
             {
-                compilation = compilation.AddReferences(primaryInteropAssemblyReferences);
-
-                diagnostics = compilation.GetDiagnostics();
-                if (diagnostics is { IsEmpty: false })
-                    throw new NotImplementedException(string.Join(Environment.NewLine, diagnostics));
+                compilation = compilationWithAddedReferences;
 
                 sourceAssemblies = sourceReferences
                     .Select(compilation.GetAssemblyOrModuleSymbol)
@@ -173,6 +189,10 @@ namespace GenerateRefAssemblySource
                     .Select(a => (Symbol: a, TypeDeclarationAnalysis: new TypeDeclarationAnalysis(a)))
                     .ToList();
             }
+
+            var diagnostics = compilation.GetDiagnostics();
+            if (diagnostics is { IsEmpty: false })
+                throw new NotImplementedException(string.Join(Environment.NewLine, diagnostics));
 
             var coreLibrary = compilation.GetSpecialType(SpecialType.System_Object).ContainingAssembly;
             var isDefiningTargetFramework = sourceReferences.Contains(compilation.GetMetadataReference(coreLibrary)!);
@@ -214,7 +234,10 @@ namespace GenerateRefAssemblySource
                     WriteProjectFile(
                         writer,
                         targetFramework,
-                        assemblyReferences.Except(comReferences.Select(r => r.AssemblyName.Name!), StringComparer.OrdinalIgnoreCase).ToImmutableArray(),
+                        assemblyReferences
+                            .Except(comReferences.Select(r => r.AssemblyName.Name!), StringComparer.OrdinalIgnoreCase)
+                            .Select(r => fullPathsToUseForReferences.GetValueOrDefault(r) ?? r)
+                            .ToImmutableArray(),
                         comReferences,
                         projectReferences,
                         runtimeMetadataVersion,

@@ -1,7 +1,7 @@
-﻿using System;
-using System.Reflection;
+﻿using Microsoft.CodeAnalysis;
+using System;
 
 namespace GenerateRefAssemblySource
 {
-    internal record PrimaryInteropAssembly(AssemblyName AssemblyName, Guid Guid, Version Version);
+    internal record PrimaryInteropAssembly(AssemblyIdentity AssemblyName, Guid Guid, Version Version);
 }
