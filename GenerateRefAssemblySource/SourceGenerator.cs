@@ -191,8 +191,30 @@ namespace GenerateRefAssemblySource
 
             var generatedMembers = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
 
+            var sourceMembers = type.GetMembers().ToBuilder();
+
+            for (var i = sourceMembers.Count - 1; i >= 0; i--)
+            {
+                if (sourceMembers[i] is IPropertySymbol { Parameters: { IsEmpty: false }, IsIndexer: false } property)
+                {
+                    sourceMembers.RemoveAt(i);
+
+                    // C# can consume named parameterized properties in COM interfaces, but in other places C# can only
+                    // consume as individual methods. Roslyn already has ordinary method symbols in
+                    // ITypeSymbol.GetMembers() for the accessors in the later case, but we want to emit them in both
+                    // cases since C# still can't declare named parameterized properties.
+                    foreach (var accessor in new[] { property.GetMethod, property.SetMethod })
+                    {
+                        if (accessor is not null && !type.GetMembers(accessor.Name).Any(m => (m as IMethodSymbol)?.MethodKind == MethodKind.Ordinary))
+                        {
+                            sourceMembers.Add(accessor);
+                        }
+                    }
+                }
+            }
+
             foreach (var member in FilterAndSortTypeMembers(
-                type.GetMembers().Where(m =>
+                sourceMembers.Where(m =>
                 {
                     if (!MetadataFacts.IsVisibleOutsideAssembly(m))
                     {
@@ -486,6 +508,8 @@ namespace GenerateRefAssemblySource
             switch (method.MethodKind)
             {
                 case MethodKind.Ordinary:
+                case MethodKind.PropertyGet: // Used to handle VB non-default indexers
+                case MethodKind.PropertySet:
                     context.WriteTypeReference(method.ReturnType);
                     context.Writer.Write(' ');
 
