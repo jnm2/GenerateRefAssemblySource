@@ -759,6 +759,13 @@ namespace GenerateRefAssemblySource
                 context.Writer.Indent++;
             }
 
+            var unrepresentableDefaultValueIndex = parameters.FindLastIndex(p => p is
+            {
+                HasExplicitDefaultValue: true,
+                ExplicitDefaultValue: not null,
+                Type: { IsReferenceType: true, SpecialType: not SpecialType.System_String },
+            });
+
             for (var i = 0; i < parameters.Length; i++)
             {
                 if (i != 0)
@@ -771,7 +778,9 @@ namespace GenerateRefAssemblySource
 
                 var parameter = parameters[i];
 
-                if (!asExplicitImplementation && parameter.IsOptional && !parameter.HasExplicitDefaultValue)
+                var suppressEmittingAsOptional = asExplicitImplementation || i <= unrepresentableDefaultValueIndex;
+
+                if (!suppressEmittingAsOptional && parameter.IsOptional && !parameter.HasExplicitDefaultValue)
                 {
                     context.Writer.Write("[System.Runtime.InteropServices.Optional]");
                     if (multiline)
@@ -795,7 +804,7 @@ namespace GenerateRefAssemblySource
                 context.Writer.Write(' ');
                 context.WriteIdentifier(parameter.Name);
 
-                if (!asExplicitImplementation && parameter.HasExplicitDefaultValue)
+                if (!suppressEmittingAsOptional && parameter.HasExplicitDefaultValue)
                 {
                     if (!parameter.IsOptional) throw new NotImplementedException();
                     context.Writer.Write(" = ");

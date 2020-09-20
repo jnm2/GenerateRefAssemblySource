@@ -31,5 +31,15 @@ namespace GenerateRefAssemblySource
         {
             return instance.IsDefault ? ImmutableArray<T>.Empty : instance;
         }
+
+        public static int FindLastIndex<T>(this IReadOnlyList<T> list, Func<T, bool> predicate)
+        {
+            for (var i = list.Count - 1; i >= 0; i--)
+            {
+                if (predicate(list[i])) return i;
+            }
+
+            return -1;
+        }
     }
 }
